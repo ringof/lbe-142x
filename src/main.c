@@ -4,15 +4,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-void print_usage(void) {
+void print_usage(int model) {
+	unsigned long max_freq = LBE_1421_MAX_FREQ;
+
+	if (model == LBE_1420) {
+		max_freq = LBE_1420_MAX_FREQ;
+	}
+
 	printf("Usage: lbe-142x [OPTIONS]\n");
 	printf("Options:\n");
-	printf("  --f1 <freq> Set frequency for output 1 (1-1400000000 Hz) and save to flash\n");
+	printf("  --f1 <freq> Set frequency for output 1 (1-%lu Hz) and save to flash\n", max_freq);
 	printf("  --f1t <freq> Set temporary frequency for output 1\n");
-	printf("  --f2 <freq> Set frequency for output 2 (1-1400000000 Hz) and save to flash (LBE-1421 only)\n");
+	printf("  --f2 <freq> Set frequency for output 2 (1-%lu Hz) and save to flash (LBE-1421 only)\n", max_freq);
 	printf("  --f2t <freq> Set temporary frequency for output 2 (LBE-1421 only)\n");
 	printf("  --out <0|1> Enable or disable outputs\n");
-	printf("  --pll <0|1> Set PLL(0) or FLL(1) mode (LBE-1421 only)\n");
+	printf("  --pll <0|1> Set PLL(0) or FLL(1) mode\n");
 	printf("  --pps <0|1> Enable or disable 1PPS on OUT1 (LBE-1421 only)\n");
 	printf("  --pwr1 <0|1> Set OUT1 power level: normal(0) or low(1)\n");
 	printf("  --pwr2 <0|1> Set OUT2 power level: normal(0) or low(1) (LBE-1421 only)\n");
@@ -25,13 +31,9 @@ int main(int argc, char *argv[]) {
 	struct lbe_status status;
 	enum lbe_model model;
 	int changed = 0;
+	unsigned long max_freq = LBE_1421_MAX_FREQ;
 
 	printf("lbe-142x v1.0 13 Dec 2024 Leo Bodnar LBE-142x GPS locked clock source config\n");
-
-	if (argc == 1) {
-		print_usage();
-		return 1;
-	}
 
 	dev = lbe_open_device();
 	if (!dev) {
@@ -40,7 +42,17 @@ int main(int argc, char *argv[]) {
 	}
 
 	model = lbe_get_model(dev);
+
+	if (argc == 1) {
+		print_usage(model);
+		return 1;
+	}
+
 	printf("Connected to LBE-%s\n", model == LBE_1420 ? "1420" : "1421 dual output");
+
+	if (model == LBE_1420) {
+		max_freq = LBE_1420_MAX_FREQ;
+	}
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--f1") == 0 || strcmp(argv[i], "--f2") == 0 || 
@@ -55,7 +67,7 @@ int main(int argc, char *argv[]) {
 				}
 
 				uint32_t new_freq = atoi(argv[++i]);
-				if (new_freq >= 1 && new_freq <= LBE_MAX_FREQ) {
+				if (new_freq >= 1 && new_freq <= max_freq) {
 					if (temp) {
 						if (lbe_set_frequency_temp(dev, out_no, new_freq) == 0) {
 							printf("  Setting OUT%d temporary frequency: %u Hz\n", out_no, new_freq);
@@ -68,7 +80,7 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				} else {
-					fprintf(stderr, "Invalid frequency: %u (range: 1-%lu Hz)\n", new_freq, LBE_MAX_FREQ);
+					fprintf(stderr, "Invalid frequency: %u (range: 1-%lu Hz)\n", new_freq, max_freq);
 				}
 			}
 		} else if (strcmp(argv[i], "--out") == 0) {
@@ -84,10 +96,6 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		} else if (strcmp(argv[i], "--pll") == 0) {
-			if (model != LBE_1421_DUALOUT) {
-				fprintf(stderr, "PLL/FLL mode control is only supported on LBE-1421\n");
-				continue;
-			}
 			if (i + 1 < argc) {
 				int fll_mode = atoi(argv[++i]);
 				if (fll_mode == 0 || fll_mode == 1) {
@@ -153,10 +161,11 @@ int main(int argc, char *argv[]) {
 					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
 					printf("  1PPS on OUT1: %s\n", status.pps_enabled ? "Enabled" : "Disabled");
 				}
+				printf("  %s mode enabled\n", status.fll_enabled ? "FLL" : "PLL");
 			}
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[i]);
-			print_usage();
+			print_usage(model);
 		}
 	}
 

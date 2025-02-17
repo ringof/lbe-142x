@@ -32,6 +32,7 @@ int lbe_set_outputs_enable(struct lbe_device* dev, int enable);
 int lbe_blink_leds(struct lbe_device* dev);
 int lbe_set_frequency_temp(struct lbe_device* dev, int output, uint32_t frequency);
 int lbe_set_pll_mode(struct lbe_device* dev, int fll_mode);
+int lbe_set_fll_mode(struct lbe_device* dev, int fll_mode);
 int lbe_set_1pps(struct lbe_device* dev, int enable);
 int lbe_set_power_level(struct lbe_device* dev, int output, int low_power);
 
