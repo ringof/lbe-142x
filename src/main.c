@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
 	int changed = 0;
 	unsigned long max_freq = LBE_1421_MAX_FREQ;
 
-	printf("lbe-142x v1.0 13 Dec 2024 Leo Bodnar LBE-142x GPS locked clock source config\n");
+	printf("lbe-142x v1.1 17 Feb 2024 Leo Bodnar LBE-142x GPS locked clock source config\n");
 
 	dev = lbe_open_device();
 	if (!dev) {
@@ -158,10 +158,10 @@ int main(int argc, char *argv[]) {
 				if (model == LBE_1421_DUALOUT) {
 					printf("  OUT2 Frequency: %u Hz\n", status.frequency2);
 					printf("  OUT2 Power Level: %s\n", status.out2_power_low ? "Low" : "Normal");
-					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
+
 					printf("  1PPS on OUT1: %s\n", status.pps_enabled ? "Enabled" : "Disabled");
 				}
-				printf("  %s mode enabled\n", status.fll_enabled ? "FLL" : "PLL");
+				printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
 			}
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[i]);

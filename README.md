@@ -10,15 +10,15 @@ It allows users to configure device settings, set frequencies, and monitor devic
 - Cross-platform compatibility (Windows and GNU/Linux)
 - Set output frequencies with Hz precision
 - Enable/disable outputs
+- PLL/FLL mode selection
+- Output power level control (normal/low power)
+- Temporary frequency settings without EEPROM save
 - Blink device LEDs for identification
 - Retrieve and display comprehensive device status
 
 ### Advanced Features (LBE-1421 Only)
 - Dual output frequency control
-- PLL/FLL mode selection
 - 1PPS on OUT1 (Pulse Per Second) output configuration
-- Output power level control (normal/low power)
-- Temporary frequency settings without EEPROM save
 
 ## Prerequisites
 
@@ -75,8 +75,10 @@ It allows users to configure device settings, set frequencies, and monitor devic
 4. Build the project:
 
    For Windows (Visual Studio 2022):
-   Open the generated solution file and build using Visual Studio
-   
+   - Option1:
+     - Open the generated solution file and build using Visual Studio
+   - Option2 do the same step as for MinGW64 and GNU/Linux
+
    For MinGW64 and GNU/Linux:
       ```
       cmake --build . --config Release
@@ -92,20 +94,22 @@ It allows users to configure device settings, set frequencies, and monitor devic
 After building the project, you can run the `lbe-142x` executable with various command-line options:
 
 ```
-lbe-142x v1.0 13 Dec 2024 Leo Bodnar LBE-142x GPS locked clock source config
+lbe-142x v1.1 17 Feb 2024 Leo Bodnar LBE-142x GPS locked clock source config
 Usage: lbe-142x [OPTIONS]
 Options:
-  --f1 <freq>     Set frequency for output 1 (1-1400000000 Hz) and save to flash
-  --f1t <freq>    Set temporary frequency for output 1
-  --f2 <freq>     Set frequency for output 2 (1-1400000000 Hz) and save to flash (LBE-1421 only)
-  --f2t <freq>    Set temporary frequency for output 2 (LBE-1421 only)
-  --out <0|1>     Enable or disable outputs
-  --pll <0|1>     Set PLL(0) or FLL(1) mode (LBE-1421 only)
-  --pps <0|1>     Enable or disable 1PPS on OUT1 (LBE-1421 only)
-  --pwr1 <0|1>    Set OUT1 power level: normal(0) or low(1)
-  --pwr2 <0|1>    Set OUT2 power level: normal(0) or low(1) (LBE-1421 only)
-  --blink         Blink output LED(s) for 3 seconds
-  --status        Display current device status
+  --f1 <freq> Set frequency for output 1 (1-1400000000 Hz) and save to flash
+  --f1t <freq> Set temporary frequency for output 1
+  --f2 <freq> Set frequency for output 2 (1-1400000000 Hz) and save to flash (LBE-1421 only)
+  --f2t <freq> Set temporary frequency for output 2 (LBE-1421 only)
+  --out <0|1> Enable or disable outputs
+  --pll <0|1> Set PLL(0) or FLL(1) mode
+  --pps <0|1> Enable or disable 1PPS on OUT1 (LBE-1421 only)
+  --pwr1 <0|1> Set OUT1 power level: normal(0) or low(1)
+  --pwr2 <0|1> Set OUT2 power level: normal(0) or low(1) (LBE-1421 only)
+  --blink Blink output LED(s) for 3 seconds
+  --status Display current device status
+  
+Note: --f1 <freq> Set frequency for output 1 for LBE-1420 can be set up to 1600000000 Hz
 ```
 
 Examples:
@@ -120,7 +124,7 @@ Examples:
    ./lbe-142x --f2t 10500000
    ```
 
-3. Enable FLL mode (LBE-1421 only):
+3. Enable FLL mode:
    ```
    ./lbe-142x --pll 1
    ```
@@ -153,8 +157,8 @@ Device Status (0xXX):
   OUT1 Power Level: Normal/Low
   OUT2 Frequency: XXXXX Hz (LBE-1421 only)
   OUT2 Power Level: Normal/Low (LBE-1421 only)
-  Mode: PLL/FLL (LBE-1421 only)
   1PPS on OUT1: Enabled/Disabled (LBE-1421 only)
+  Mode: PLL/FLL
 ```
 
 ## Troubleshooting
