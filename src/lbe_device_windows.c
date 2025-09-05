@@ -98,7 +98,7 @@ static int send_feature_report(struct lbe_device* dev, const uint8_t* report, si
 	}
 
 	int ret = libusb_control_transfer(dev->handle,
-				LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
+				(uint8_t)(LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE),
 				LIBUSB_REQUEST_SET_REPORT,
 				(LIBUSB_REPORT_TYPE_FEATURE << 8) | report[0],
 				0,
@@ -119,7 +119,7 @@ int lbe_get_device_status(struct lbe_device* dev, struct lbe_status* status) {
 
 	buf[0] = 0x4B; // Report Number
 	ret = libusb_control_transfer(dev->handle,
-				LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
+				(uint8_t)(LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE),
 				LIBUSB_REQUEST_GET_REPORT,
 				(LIBUSB_REPORT_TYPE_FEATURE << 8) | buf[0],
 				0,
