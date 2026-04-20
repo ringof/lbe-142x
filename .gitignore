@@ -1,1 +1,4 @@
 build
+build-*/
+*.lnk
+lbe-142x_dev-windows/

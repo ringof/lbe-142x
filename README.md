@@ -1,190 +1,226 @@
 # LBE-142x GPS Locked Clock Source Configuration Tool
 
-This project provides a cross-platform configuration tool for Leo Bodnar LBE-1420 (single output) and LBE-1421 (dual output) GPS locked clock source devices.
+Cross-platform configuration tool for Leo Bodnar GPS-disciplined clock source devices:
 
-It allows users to configure device settings, set frequencies, and monitor device status on both Windows and GNU/Linux systems (tested on Native Windows11 x64 & Native Ubuntu24.04LTS x64).
+| Model      | PID      | Outputs | Notes                                  |
+|------------|----------|---------|----------------------------------------|
+| LBE-1420   | 0x2443   | 1       | up to 1600 MHz                         |
+| LBE-1421   | 0x2444   | 2       | up to 1400 MHz, dual-output, NMEA over CDC |
+| LBE-1423   | 0x226f   | 2       | same protocol as 1421                  |
+| LBE-Mini   | 0x2211   | 1       | up to 810 MHz, UBX stream over HID     |
+
+Configures device settings, sets frequencies, and provides a live GPS monitor.
+Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubuntu 24.04 LTS x64).
 
 ## Features
 
-### Basic Features (Both Models LBE-1420/LBE-1421)
-- Cross-platform compatibility (Windows and GNU/Linux)
-- Set output frequencies with Hz precision
-- Enable/disable outputs
-- PLL/FLL mode selection
-- Output power level control (normal/low power)
-- Temporary frequency settings without EEPROM save
-- Blink device LEDs for identification
-- Retrieve and display comprehensive device status
+### Common (all models)
+- Cross-platform (Windows and GNU/Linux)
+- Set output frequency with Hz precision (persisted to flash)
+- Enable/disable outputs, low/normal power level
+- Blink output LED for device identification
+- `--status` dumps device state (PLL lock, GPS lock, antenna, frequencies, ...)
+- `--monitor` live GPS display (UTC, lat/lon, altitude, per-SV CNR bars)
 
-### Advanced Features (LBE-1421 Only)
-- Dual output frequency control
-- 1PPS on OUT1 (Pulse Per Second) output configuration
+### LBE-1421 / LBE-1423 specific
+- Dual output with independent frequency / power / temporary-frequency control
+- 1PPS on OUT1 enable/disable
+- PLL / FLL mode toggle
+- `--monitor` parses NMEA from the USB CDC port (`/dev/ttyACM*` or `COMxx`); auto-discovers the port
+- Live 1PPS chronometer: sub-second UTC interpolated from DCD edges, rolling jitter stats
+
+### LBE-Mini specific
+- `--drive <8|16|24|32>` — set OUT1 Si5351C drive strength in mA (four-level)
+- `--monitor` parses UBX NAV-PVT / NAV-SAT / NAV-CLOCK from the HID interrupt-IN endpoint
+- `--gps-info` — UBX-MON-VER (u-blox SW/HW version + protocol extensions)
 
 ## Prerequisites
 
 ### Windows
-- Microsoft Visual Studio 2022 / MINGW64
-- CMake (version 3.10 or higher)
-- libusb (1.0 or higher) see https://github.com/libusb/libusb/releases
+- Microsoft Visual Studio 2022 **or** MinGW64 (via MSYS2)
+- CMake (>= 3.18)
+- **libusb**: auto-downloaded at configure time on MSVC (from the official release .7z); picked up from the MinGW64 toolchain (`pacman -S mingw-w64-x86_64-libusb`) on MinGW.
 
 ### GNU/Linux
 - GCC or Clang
-- CMake (version 3.10 or higher)
-- libudev-dev
-  - Ubuntu install libudev-dev dependency
+- CMake (>= 3.15)
+- libudev:
    ```
-   sudo apt update
    sudo apt install libudev-dev
    ```
 
 ## Building the Project
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/bvernoux/lbe-142x.git
-   cd lbe-142x
-   ```
+```
+git clone https://github.com/bvernoux/lbe-142x.git
+cd lbe-142x
+```
 
-2. Download and extract the LibUSB library for Visual Studio 2022 and MinGW64:
-   - Go to the [LibUSB releases page](https://github.com/libusb/libusb/releases)
-   - Download the latest release (e.g., `libusb-1.0.27.7z`)
-   - Extract the contents to a `libusb` directory in the root of the project
-     (The directory structure should look like: `lbe-142x/libusb/include`, `lbe-142x/libusb/MinGW64`, etc.)
+### Windows (Visual Studio 2022)
+```
+cmake -B build-msvc -G "Visual Studio 17 2022" -A x64
+cmake --build build-msvc --config Release
+```
+The MSVC build links against the **static CRT** (`/MT`) by default, so the produced `.exe` has no `VCRUNTIME140.dll` / `ucrtbase.dll` dependency.
+Pass `-DLBE_MSVC_STATIC_CRT=OFF` to link the dynamic CRT instead.
 
-3. Create a build directory and run CMake:
+### Windows (MinGW64, MSYS2)
+```
+cmake -B build-mingw64 -G "Ninja"
+cmake --build build-mingw64
+```
 
-   For Windows (Visual Studio 2022):
-      ```
-      rm -rf build_VS2022
-      mkdir build_VS2022 && cd build_VS2022
-      cmake -G "Visual Studio 17 2022" -A x64 ..
-      ```
-   For Windows MinGW64:
-      ```
-      rm -rf build_MinGW64
-      mkdir build_MinGW64 && cd build_MinGW64
-      cmake -G "MinGW Makefiles" ..
-      ```
-   For GNU/Linux:
-      ```
-      rm -rf build
-      mkdir build && cd build
-      cmake ..
-      ```
+### GNU/Linux
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
 
-4. Build the project:
-
-   For Windows (Visual Studio 2022):
-   - Option1:
-     - Open the generated solution file and build using Visual Studio
-   - Option2 do the same step as for MinGW64 and GNU/Linux
-
-   For MinGW64 and GNU/Linux:
-      ```
-      cmake --build . --config Release
-      ```
-   
-      For a specific build type (default is Release):
-      ```
-      cmake --build . --config Debug
-      ```
+All three toolchains treat warnings as errors (`/W4 /WX` on MSVC, `-Wall -Wextra -Werror` elsewhere).
 
 ## Usage
 
-After building the project, you can run the `lbe-142x` executable with various command-line options:
+`lbe-142x --help` prints a help screen tailored to the connected device.
+Run with no device attached (or with `--help --pid 0xDEAD`) to see the generic help covering every supported model:
 
 ```
-lbe-142x v1.1 17 Feb 2024 Leo Bodnar LBE-142x GPS locked clock source config
+lbe-142x v1.2 20 Apr 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config
 Usage: lbe-142x [OPTIONS]
 Options:
-  --f1 <freq> Set frequency for output 1 (1-1400000000 Hz) and save to flash
-  --f1t <freq> Set temporary frequency for output 1
-  --f2 <freq> Set frequency for output 2 (1-1400000000 Hz) and save to flash (LBE-1421 only)
-  --f2t <freq> Set temporary frequency for output 2 (LBE-1421 only)
-  --out <0|1> Enable or disable outputs
-  --pll <0|1> Set PLL(0) or FLL(1) mode
-  --pps <0|1> Enable or disable 1PPS on OUT1 (LBE-1421 only)
-  --pwr1 <0|1> Set OUT1 power level: normal(0) or low(1)
-  --pwr2 <0|1> Set OUT2 power level: normal(0) or low(1) (LBE-1421 only)
-  --blink Blink output LED(s) for 3 seconds
-  --status Display current device status
-  
-Note: --f1 <freq> Set frequency for output 1 for LBE-1420 can be set up to 1600000000 Hz
+  --help                 Show this help
+  --pid <0xNNNN>         Select a specific LBE device when more than one is attached
+                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2211=Mini)
+  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=1600000000, 1421 <=1400000000, Mini <=810000000)
+  --f1t <Hz>             Set OUT1 temporary frequency (not supported on Mini)
+  --f2 <Hz>              Set OUT2 frequency, save to flash (LBE-1421/1423 only)
+  --f2t <Hz>             Set OUT2 temporary frequency (LBE-1421/1423 only)
+  --out <0|1>            Enable or disable outputs
+  --pll <0|1>            Set PLL(0) or FLL(1) mode (not supported on Mini)
+  --pps <0|1>            Enable or disable 1PPS on OUT1 (LBE-1421/1423 only)
+  --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)
+  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423 only)
+  --drive <8|16|24|32>   Set OUT1 drive strength in mA (Mini only)
+  --blink                Blink output LED(s) for 3 seconds
+  --status               Display current device status
+  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423: NMEA via CDC)
+  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423)
+  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER) (Mini only)
 ```
 
-Examples:
+### Examples
 
-1. Set frequency for output 1 to 10 MHz and save to flash:
-   ```
-   ./lbe-142x --f1 10000000
-   ```
+Set OUT1 frequency to 10 MHz and save to flash:
+```
+./lbe-142x --f1 10000000
+```
 
-2. Set temporary frequency for output 2 to 10.5 MHz (LBE-1421 only):
-   ```
-   ./lbe-142x --f2t 10500000
-   ```
+Set a temporary (non-persisted) frequency on OUT2 (LBE-1421 only):
+```
+./lbe-142x --f2t 10500000
+```
 
-3. Enable FLL mode:
-   ```
-   ./lbe-142x --pll 1
-   ```
+Switch to FLL mode and enable 1PPS on OUT1 (LBE-1421 only):
+```
+./lbe-142x --pll 1 --pps 1
+```
 
-4. Enable 1PPS on OUT1 (LBE-1421 only):
-   ```
-   ./lbe-142x --pps 1
-   ```
+Set LBE-Mini drive strength to 24 mA:
+```
+./lbe-142x --pid 0x2211 --drive 24
+```
 
-5. Set low power mode for output 1:
-   ```
-   ./lbe-142x --pwr1 1
-   ```
+Live GPS chronometer on LBE-1421 (auto-discovers COM / `/dev/ttyACM*`; `--port` overrides):
+```
+./lbe-142x --pid 0x2444 --monitor
+./lbe-142x --pid 0x2444 --port COM12 --monitor
+```
 
-6. Display device status:
-   ```
-   ./lbe-142x --status
-   ```
+Live UBX monitor on LBE-Mini:
+```
+./lbe-142x --pid 0x2211 --monitor
+./lbe-142x --pid 0x2211 --gps-info
+```
+
+Select a specific device when both a Mini and a 1421 are attached:
+```
+./lbe-142x --pid 0x2444 --status
+./lbe-142x --pid 0x2211 --status
+```
 
 ## Status Display
 
-The `--status` command shows comprehensive device information:
+The `--status` command prints per-model fields.
+LBE-1421 / 1423 example:
 ```
-Device Status (0xXX):
-  GPS Lock: Yes/No
-  PLL Lock: Yes/No
-  Antenna: OK/Short Circuit
-  Output(s) Enabled: Yes/No
-  OUT1 Frequency: XXXXX Hz
-  OUT1 Power Level: Normal/Low
-  OUT2 Frequency: XXXXX Hz (LBE-1421 only)
-  OUT2 Power Level: Normal/Low (LBE-1421 only)
-  1PPS on OUT1: Enabled/Disabled (LBE-1421 only)
-  Mode: PLL/FLL
+Device Status (0x7F):
+  GPS Lock: Yes
+  PLL Lock: Yes
+  Antenna: OK
+  Output(s) Enabled: Yes
+  OUT1 Frequency: 10000000 Hz
+  OUT1 Power Level: Normal
+  OUT2 Frequency: 10000000 Hz
+  OUT2 Power Level: Normal
+  1PPS on OUT1: Enabled
+  Mode: PLL
 ```
+LBE-Mini example (no antenna / OUT2 / PLL-mode lines; `--drive` and signal-loss shown instead):
+```
+Device Status (0x23):
+  GPS Lock: Yes
+  PLL Lock: Yes
+  Output(s) Enabled: Yes
+  OUT1 Frequency: 10000000 Hz
+  OUT1 Drive Strength: 24mA
+  Signal loss count: 0
+```
+
+## Live GPS Monitor
+
+`--monitor` renders a TUI with real-time UTC, position, altitude, fix quality, and a CNR bar chart per satellite.
+The display is redrawn continuously; press Ctrl-C to exit.
+
+**LBE-1421 / 1423 chronometer mode:** sub-second UTC is interpolated from the 1PPS signal (carried on the CDC DCD line).
+The trailing status line reports the rolling PPS jitter over the last 30 edges:
+```
+UTC:  2026-04-20 13:55:08.094
+Lat:      +xx.xxxxxxx deg
+Lon:      +xx.xxxxxxx deg
+Alt:    +xxx.xxx m (MSL)
+Fix:  3D        Sats used: 9
+...
+PPS:    edges=10  avg=998 ms  min=938  max=1062  (last 9)  NMEA->edge=0 ms
+Stream: lines=120 bad_ck=1  port=COM12
+```
+Measurement precision is bounded by the OS millisecond clock resolution (`GetTickCount` ~15 ms on Windows, `CLOCK_MONOTONIC` ~1 ms on Linux) and the ~20 ms polling cadence.
+For metrology-grade PPS timing, an external capture method is required.
 
 ## Troubleshooting
 
 ### GNU/Linux
-If you encounter permission issues when accessing the device, you may need to add a udev rule.
-
-Create a file named `/etc/udev/rules.d/99-lbe.rules` with the following content:
+If you encounter permission issues accessing the device, add a udev rule granting your user access to LBE hidraw nodes:
 
 ```
-KERNEL=="hidraw*", SUBSYSTEM=="hidraw", MODE="0660", GROUP="plugdev"
+# /etc/udev/rules.d/99-lbe.rules
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1dd2", MODE="0660", GROUP="plugdev"
 ```
-Then add current user to group plugdev
+Add your user to `plugdev` and reload:
 ```
 sudo usermod -aG plugdev $(whoami)
-```
-
-Then, reload the udev rules:
-
-```
 sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+(Log out and back in for group membership to take effect.)
+
+**LBE-1421 / 1423 `--monitor` also needs read access to the CDC port** (`/dev/ttyACM*`).
+Add yourself to `dialout`:
+```
+sudo usermod -aG dialout $(whoami)
 ```
 
 ## Contributing
 
-Contributions to this project are welcome. Please fork the repository and submit a pull request with your changes.
+Contributions to this project are welcome.
+Please fork the repository and submit a pull request with your changes.
 
 ## License
 
