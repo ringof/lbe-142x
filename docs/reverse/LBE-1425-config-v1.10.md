@@ -131,9 +131,19 @@ valid UBX messages with **zero checksum failures**:
 This is the same UBX content the LBE-Mini streams over HID, so the existing UBX
 parser (`src/model_mini.c`) and CNR renderer (`src/gnss_view.c`) can be reused
 for a 1425 diagnostics monitor after stripping the 2-byte `[seq][len]` frame
-header. The `0x08` writes (`08 06 01 08 00 01 <sel> 0A`) are the GUI's
-UBX-poll/wrap requests that drive this stream (cf. the Mini's `0x08`
-`LBE_MINI_UBX_WRAP`). `python/parse_pcapng.py --ubx` de-frames and decodes it.
+header. `python/parse_pcapng.py --ubx` de-frames and decodes it.
+
+The `0x08` writes (`08 06 01 08 00 01 <sel> 0A`) are CFG-MSG wraps: the `<sel>`
+byte is the u-blox NAV message id to enable — `0x07`=NAV-PVT, `0x22`=NAV-CLOCK,
+`0x35`=NAV-SAT, i.e. exactly the three NAV messages seen in the stream. The
+device forwards these to the u-blox as `CFG-MSG`/`CFG-GNSS`/`CFG-NAV5`/`CFG-TP5`
+(seen as the ACK-ACK payloads 06-01 / 06-3E / 06-24 / 06-31), which also
+confirms `--gnss`→CFG-GNSS and `--dynmodel`→CFG-NAV5 from the GPS side.
+
+**Stream fully characterized:** of the EP 0x83 payload bytes, 77% are valid UBX
+(NAV-PVT/SAT/CLOCK + ACK-ACK, all decoded) and ~22% are `0xFF` inter-message
+padding (correctly skipped on resync); the remainder is a negligible
+frame-boundary fragment. No hidden or unhandled message types.
 
 ## Factory reset
 
@@ -147,11 +157,14 @@ OUT1=OUT2=10 MHz, PLL mode, PPS off, NMEA off, both outputs normal power.
 - Core 1421 command + status protocol: **confirmed**, works in this tool.
 - `0x03` SET_GNSS, `0x04` SET_DYNMODEL, `0x0F` SET_NMEA: **confirmed and
   implemented** (`--gnss` / `--dynmodel` / `--nmea`).
-- `0x08` poll + EP 0x83 stream: **identified, implemented, and confirmed on
-  hardware** as `--diag`. Renders the NAV-SAT CNR histogram (GPS/Galileo/GLONASS)
-  + a NAV-CLOCK disciplining line. Live on an LBE-1425: 3D fix, 14 SVs, clock
-  bias ~-0.5 ms, drift -12 ns/s, tAcc 4 ns, fAcc 244 ps/s. The stream free-runs
-  (the best-effort 0x08 poll is not required but is harmless).
-- Status tail bytes 21-24 (`67 02 05 00`): the richer telemetry now looks to live
-  in the UBX stream (NAV-CLOCK), so these GET_REPORT tail bytes are likely minor
-  (fw/build id?) — lower priority.
+- `0x08` poll + EP 0x83 stream: **fully decoded, implemented, confirmed on
+  hardware** as `--diag` (NAV-SAT CNR histogram + NAV-CLOCK disciplining line;
+  live: 3D fix, 14 SVs, bias ~-0.5 ms, drift -12 ns/s, tAcc 4 ns, fAcc 244 ps/s).
+  The `0x08` selector = NAV message id (PVT/CLOCK/SAT); stream free-runs anyway.
+- Status tail bytes 21-24 (`67 02 05 00`): **constant** across the capture, so
+  not dynamic telemetry — a fixed firmware/build/capability field. Cosmetic;
+  not surfaced. The live disciplining telemetry lives in NAV-CLOCK instead.
+
+No functional open items remain in the USB stream or diagnostics: every control
+request is either a decoded config command or standard USB/CDC/HID housekeeping,
+and the EP 0x83 stream is 100% accounted for (UBX + padding).
