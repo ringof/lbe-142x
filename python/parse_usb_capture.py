@@ -45,7 +45,7 @@ OPCODE_NAMES = {
     0x0C: "1421_SET_PPS",
     0x0D: "1421_SET_PWR1",
     0x0E: "1421_SET_PWR2",
-    0x0F: "1425-NEW (toggle 0/1, function TBD)",
+    0x0F: "1425 SET_NMEA (NMEA out 0/1)",
     0x4B: "STATUS_REPORT (read)",
 }
 

@@ -27,7 +27,7 @@ from datetime import datetime
 OPCODE_NAMES = {
     0x01: "EN_OUT",
     0x02: "BLINK",
-    0x03: "1425-NEW (stepper?)",
+    0x03: "SET_GNSS (constellation mask)",
     0x04: "1425-NEW (multi-level?)",
     0x05: "SET_F1_TEMP",
     0x06: "SET_F1",
@@ -38,8 +38,12 @@ OPCODE_NAMES = {
     0x0C: "SET_PPS (0=off,1=on)",
     0x0D: "SET_PWR1 (0=norm,1=low)",
     0x0E: "SET_PWR2 (0=norm,1=low)",
-    0x0F: "1425-NEW (toggle 0/1)",
+    0x0F: "SET_NMEA (NMEA out 0/1)",
 }
+
+# GNSS constellation bits for opcode 0x03 (payload byte 1).
+GNSS_BITS = [(0x01, "GPS"), (0x02, "SBAS"), (0x04, "Gal"),
+             (0x08, "BeiDou"), (0x40, "GLONASS")]
 
 
 def u32le(b, off):
@@ -111,6 +115,9 @@ def describe(ev):
             # 08 06 01 08 00 01 <sel> 0A -- the GUI cycles <sel> at byte 6
             sel = data[6] if len(data) > 6 else 0
             extra = f"poll sel=0x{sel:02X}"
+        elif op == 0x03:
+            on = "+".join(n for m, n in GNSS_BITS if arg & m) or "none"
+            extra = f"mask=0x{arg:02X} [{on}]"
         hexd = " ".join(f"{b:02X}" for b in data[:12])
         return f"SET_REPORT  op=0x{op:02X} {name:24} {extra}   [{hexd}]"
     if bm == 0xA1 and req == 0x01:        # GET_REPORT response (status read)

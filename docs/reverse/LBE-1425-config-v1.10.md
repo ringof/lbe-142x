@@ -39,14 +39,28 @@ Confirmed identical to the LBE-1421 (`include/lbe_common.h`):
 | `0x0D` | SET_PWR1  | `[1]` = 0 normal / 1 low             | both                |
 | `0x0E` | SET_PWR2  | `[1]` = 0 normal / 1 low             | both                |
 
-Not present in the 1421 map — **LBE-1425-specific, function not yet identified**:
+LBE-1425-specific (not in the 1421 map). Identified live via usbmon_live.py:
 
-| opcode | payload                                   | args observed             | hypothesis (UNCONFIRMED) |
-|--------|-------------------------------------------|---------------------------|--------------------------|
-| `0x0F` | `[1]` = 0/1                               | toggled on then off       | a boolean feature toggle |
-| `0x04` | `[1]` = level                            | `0x00`, `0x02`, `0x08`    | 3+ level selector        |
-| `0x03` | `[1]` = value                            | `0x07,0x43,0x45,0x46,0x47`| slider/stepper           |
-| `0x08` | `08 06 01 08 00 01 {07,22,35} 0A`        | polled ~continuously      | telemetry/register read  |
+| opcode | command          | payload `[1]`                | status |
+|--------|------------------|------------------------------|--------|
+| `0x0F` | SET_NMEA (NMEA out enable) | 0 off / 1 on        | **confirmed** |
+| `0x03` | SET_GNSS (constellation mask) | bitmask, see below | **confirmed** |
+| `0x04` | (multi-level, function TBD) | `0x00`/`0x02`/`0x08`  | unmapped |
+| `0x08` | telemetry poll (GUI), sel byte at `[6]` | `{07,22,35}` | read channel |
+
+### `0x03` SET_GNSS bitmask (payload byte 1)
+
+| bit | mask | constellation |
+|-----|------|---------------|
+| 0   | 0x01 | GPS           |
+| 1   | 0x02 | SBAS          |
+| 2   | 0x04 | Galileo       |
+| 3   | 0x08 | BeiDou        |
+| 6   | 0x40 | GLONASS       |
+
+Bits 4/5 (0x10/0x20) likely QZSS/IMES — not toggled in the capture, unconfirmed.
+e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x00` = all off. Decoded from a live
+off-one-at-a-time / on-in-reverse sweep of the vendor UI's constellation checkboxes.
 
 `0x08` is issued repeatedly by the GUI (3 distinct sub-selectors cycling) and is
 almost certainly how the vendor app reads the extended "increased stability"
