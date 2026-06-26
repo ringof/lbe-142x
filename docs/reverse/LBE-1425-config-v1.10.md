@@ -112,13 +112,44 @@ Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). Bytes
 "increased stability" telemetry (fw version / holdover metric / temperature).
 Constant in this capture; needs captures across state changes to decode.
 
+## Diagnostics channel: UBX over EP 0x83 (confirmed)
+
+The HID interrupt-IN endpoint **EP 0x83** carries a **u-blox UBX binary stream** —
+the vendor GUI's "diagnostics" view (including the live per-satellite CNR
+histogram). It is HID-framed: each 64-byte interrupt transfer is
+`[seq byte][0x3E = 62][62 bytes of payload]`; concatenating the 62-byte payloads
+reassembles a continuous UBX stream. De-framed, a sample capture yields 251
+valid UBX messages with **zero checksum failures**:
+
+| UBX msg   | class/id | carries |
+|-----------|----------|---------|
+| NAV-CLOCK | 01 22    | clock bias (ns), drift (ns/s), time/freq accuracy — the disciplining/stability telemetry |
+| NAV-SAT   | 01 35    | per-SV CNR — the live histogram in the UI |
+| NAV-PVT   | 01 07    | position / velocity / time / fix |
+| ACK-ACK   | 05 01    | command acknowledgements |
+
+This is the same UBX content the LBE-Mini streams over HID, so the existing UBX
+parser (`src/model_mini.c`) and CNR renderer (`src/gnss_view.c`) can be reused
+for a 1425 diagnostics monitor after stripping the 2-byte `[seq][len]` frame
+header. The `0x08` writes (`08 06 01 08 00 01 <sel> 0A`) are the GUI's
+UBX-poll/wrap requests that drive this stream (cf. the Mini's `0x08`
+`LBE_MINI_UBX_WRAP`). `python/parse_pcapng.py --ubx` de-frames and decodes it.
+
+## Factory reset
+
+The vendor "factory reset" button is a **client-side macro** — it emits a
+sequence of already-known commands, no dedicated opcode. It reveals the factory
+defaults: GNSS `0x47` (GPS+SBAS+Galileo+GLONASS), dynModel `0x02` (Stationary),
+OUT1=OUT2=10 MHz, PLL mode, PPS off, NMEA off, both outputs normal power.
+
 ## Status / TODO
 
 - Core 1421 command + status protocol: **confirmed**, works in this tool.
 - `0x03` SET_GNSS, `0x04` SET_DYNMODEL, `0x0F` SET_NMEA: **confirmed and
   implemented** (`--gnss` / `--dynmodel` / `--nmea`).
-- `0x08` poll: this is the GUI's telemetry **read** channel; the byte-6 selector
-  cycles `0x07/0x22/0x35`. The returned data (and what each selector fetches) is
-  not yet decoded — would add a richer `--status` for the 1425.
-- Status tail bytes 21-24 (`67 02 05 00`): unexplained extra telemetry; decode
-  once we can vary the underlying quantity (fw version / holdover / temperature?).
+- `0x08` poll + EP 0x83 stream: **identified** as UBX over HID (see above). Not
+  yet *implemented* in this tool — a `--diag`/UBX monitor reusing the Mini's UBX
+  parser would surface NAV-CLOCK disciplining stats + the NAV-SAT CNR histogram.
+- Status tail bytes 21-24 (`67 02 05 00`): the richer telemetry now looks to live
+  in the UBX stream (NAV-CLOCK), so these GET_REPORT tail bytes are likely minor
+  (fw/build id?) — lower priority.
