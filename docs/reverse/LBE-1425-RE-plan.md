@@ -140,6 +140,18 @@ tshark -r lbe1425-<op>.pcapng -Y 'usb.bmRequestType == 0xa1 && usb.setup.bReques
        -T fields -e usb.setup.wValue -e usb.capdata
 ```
 
+Or just run the helper, which does all of the above and annotates each report
+against the known opcode map (`python/parse_usb_capture.py`):
+
+```sh
+python3 python/parse_usb_capture.py lbe1425-<op>.pcapng
+```
+
+It prints every Feature report with its decoded opcode, both candidate
+frequency-field offsets (@1 = 1420 layout, @5 = 1421 layout), any interrupt-IN
+GPS frames (flagging UBX `b5 62` vs NMEA `$`), and a verdict on whether all
+opcodes match the existing 1421 map.
+
 Compare the `wValue` low byte (report ID / opcode) and payload bytes against
 `include/lbe_common.h`. If they match the `LBE_1421_*` opcodes and offsets, the
 1425 is a straight 1421 clone (+ freq caps). If not, this is where we learn the
