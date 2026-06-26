@@ -87,7 +87,6 @@ int main(int argc, char *argv[]) {
 	struct lbe_status status;
 	enum lbe_model model;
 	int changed = 0;
-	unsigned long max_freq = LBE_1421_MAX_FREQ;
 	uint16_t preferred_pid = 0;
 	int help_requested = 0;
 
@@ -141,12 +140,6 @@ int main(int argc, char *argv[]) {
 	}
 	printf("Connected to LBE-%s\n", model_name);
 
-	if (model == LBE_1420) {
-		max_freq = LBE_1420_MAX_FREQ;
-	} else if (model == LBE_MINI) {
-		max_freq = LBE_MINI_MAX_FREQ;
-	}
-
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--f1") == 0 || strcmp(argv[i], "--f2") == 0 || 
 			strcmp(argv[i], "--f1t") == 0 || strcmp(argv[i], "--f2t") == 0) {
@@ -161,7 +154,8 @@ int main(int argc, char *argv[]) {
 
 				unsigned long parsed = strtoul(argv[++i], NULL, 10);
 				uint32_t new_freq = parsed > UINT32_MAX ? 0 : (uint32_t)parsed;
-				if (new_freq >= 1 && new_freq <= max_freq) {
+				uint32_t out_max = lbe_max_freq(dev, out_no);
+				if (new_freq >= 1 && new_freq <= out_max) {
 					if (temp) {
 						if (lbe_set_frequency_temp(dev, out_no, new_freq) == 0) {
 							printf("  Setting OUT%d temporary frequency: %u Hz\n", out_no, new_freq);
@@ -174,7 +168,7 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				} else {
-					fprintf(stderr, "Invalid frequency: %u (range: 1-%lu Hz)\n", new_freq, max_freq);
+					fprintf(stderr, "Invalid frequency: %u (range: 1-%u Hz)\n", new_freq, out_max);
 				}
 			}
 		} else if (strcmp(argv[i], "--out") == 0) {
