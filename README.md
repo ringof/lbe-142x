@@ -30,6 +30,14 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 - `--monitor` parses NMEA from the USB CDC port (`/dev/ttyACM*` or `COMxx`); auto-discovers the port
 - Live 1PPS chronometer: sub-second UTC interpolated from DCD edges, rolling jitter stats
 
+### LBE-1425 specific
+- Everything in the LBE-1421/1423 set above (dual output, 1PPS, PLL/FLL, NMEA `--monitor`)
+- Asymmetric per-output frequency limits: OUT1 ≤ 800 MHz (the 1PPS output), OUT2 ≤ 1.4 GHz
+- `--gnss <0xNN>` — GNSS constellation enable bitmask (GPS=0x01, SBAS=0x02, Galileo=0x04, BeiDou=0x08, GLONASS=0x40). BeiDou is mutually exclusive with GPS/SBAS/Galileo; GLONASS is unrestricted.
+- `--dynmodel <model>` — u-blox dynamic platform model (`portable|stationary|pedestrian|automotive|sea|airborne`, or a raw u-blox value)
+- `--nmea <0|1>` — enable/disable the NMEA output stream
+- `--diag` — live UBX diagnostics: per-SV CNR histogram (NAV-SAT) plus a clock-disciplining line (NAV-CLOCK: bias, drift, time/frequency accuracy), parsed from the EP 0x83 stream
+
 ### LBE-Mini specific
 - `--drive <8|16|24|32>` — set OUT1 Si5351C drive strength in mA (four-level)
 - `--monitor` parses UBX NAV-PVT / NAV-SAT / NAV-CLOCK from the HID interrupt-IN endpoint
@@ -90,7 +98,7 @@ Usage: lbe-142x [OPTIONS]
 Options:
   --help                 Show this help
   --pid <0xNNNN>         Select a specific LBE device when more than one is attached
-                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2211=Mini)
+                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)
   --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=1600000000, 1421 <=1400000000, Mini <=810000000)
   --f1t <Hz>             Set OUT1 temporary frequency (not supported on Mini)
   --f2 <Hz>              Set OUT2 frequency, save to flash (LBE-1421/1423 only)
@@ -104,11 +112,11 @@ Options:
   --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40) (LBE-1425 only)
   --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
   --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
-  --diag                 Live UBX diagnostics: CNR histogram + clock disciplining (LBE-1425 only)
+  --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1425 only)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
-  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423: NMEA via CDC)
-  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423)
+  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423/1425: NMEA via CDC)
+  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423/1425)
   --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER) (Mini only)
 ```
 
@@ -221,7 +229,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 (Log out and back in for group membership to take effect.)
 
-**LBE-1421 / 1423 `--monitor` also needs read access to the CDC port** (`/dev/ttyACM*`).
+**LBE-1421 / 1423 / 1425 `--monitor` also needs read access to the CDC port** (`/dev/ttyACM*`).
 Add yourself to `dialout`:
 ```
 sudo usermod -aG dialout $(whoami)
@@ -231,6 +239,13 @@ sudo usermod -aG dialout $(whoami)
 
 Contributions to this project are welcome.
 Please fork the repository and submit a pull request with your changes.
+
+Protocol reverse-engineering notes live in [`docs/reverse/`](docs/reverse/)
+(per-model USB-capture evidence). Helper scripts in [`python/`](python/) assist
+with captures — `parse_pcapng.py` / `parse_usb_capture.py` decode a usbmon /
+USBPcap capture, `usbmon_live.py` prints decoded opcodes live, and
+`test_lbe1425.py` is an on-device integration test (`--self-test` runs its
+parsers with no hardware).
 
 ## License
 

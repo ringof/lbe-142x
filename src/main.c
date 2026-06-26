@@ -83,11 +83,11 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_mini || is_1421) {
 		printf("  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
-		       generic ? " (Mini: UBX; 1421/1423: NMEA via CDC)" : "");
+		       generic ? " (Mini: UBX; 1421/1423/1425: NMEA via CDC)" : "");
 	}
 	if (generic || is_1421) {
 		printf("  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
-		       generic ? " (LBE-1421/1423)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
 	if (generic || is_mini) {
 		printf("  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER)%s\n",
