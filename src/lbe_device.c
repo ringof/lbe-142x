@@ -164,6 +164,14 @@ int lbe_monitor(struct lbe_device *dev) {
 	return dev->ops->monitor(dev->transport);
 }
 
+int lbe_diag(struct lbe_device *dev) {
+	if (!dev->ops->diag) {
+		fprintf(stderr, "--diag is not supported on this model\n");
+		return -1;
+	}
+	return dev->ops->diag(dev->transport);
+}
+
 int lbe_gps_info(struct lbe_device *dev) {
 	if (!dev->ops->gps_info) {
 		fprintf(stderr, "--gps-info is not supported on this model\n");

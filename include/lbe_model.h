@@ -47,6 +47,10 @@ struct lbe_model_ops {
 	int (*set_gnss)(struct lbe_transport *t, uint8_t mask);
 	int (*set_dynmodel)(struct lbe_transport *t, uint8_t model);
 	int (*set_nmea)(struct lbe_transport *t, int enable);
+
+	/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from
+	 * the EP 0x83 stream). NULL elsewhere. Loops until killed. */
+	int (*diag)(struct lbe_transport *t);
 };
 
 extern const struct lbe_model_ops lbe_ops_1420;

@@ -81,6 +81,11 @@ int lbe_monitor(struct lbe_device* dev);
  * print to stdout. Returns -1 if unsupported on this model. */
 int lbe_gps_info(struct lbe_device* dev);
 
+/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from the
+ * EP 0x83 stream: position, CNR histogram, clock disciplining). Returns -1 if
+ * unsupported; otherwise loops until the process is killed. */
+int lbe_diag(struct lbe_device* dev);
+
 /* Reverse-engineering helper: claim the HID interface and hex-dump every
  * interrupt-IN frame from endpoint `ep` for `duration_ms` milliseconds.
  * Useful to check whether a device streams NMEA / UBX on the HID side.

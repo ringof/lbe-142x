@@ -74,6 +74,8 @@ void print_usage(int model, int is_1425) {
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --nmea <0|1>           Enable or disable NMEA output%s\n",
 		       generic ? " (LBE-1425 only)" : "");
+		printf("  --diag                 Live UBX diagnostics (CNR histogram + clock"
+		       " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
 	}
 
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
@@ -336,6 +338,9 @@ int main(int argc, char *argv[]) {
 			changed = 1;
 		} else if (strcmp(argv[i], "--gps-info") == 0) {
 			lbe_gps_info(dev);
+			changed = 1;
+		} else if (strcmp(argv[i], "--diag") == 0) {
+			lbe_diag(dev);
 			changed = 1;
 		} else if (strcmp(argv[i], "--rawdump") == 0) {
 			/* Hidden RE helper: --rawdump [ep] [ms]. Defaults ep=0x81,

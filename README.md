@@ -104,6 +104,7 @@ Options:
   --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40) (LBE-1425 only)
   --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
   --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
+  --diag                 Live UBX diagnostics: CNR histogram + clock disciplining (LBE-1425 only)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
   --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423: NMEA via CDC)
