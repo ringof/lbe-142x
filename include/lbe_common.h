@@ -10,6 +10,7 @@
 #define PID_LBE_1420 0x2443
 #define PID_LBE_1421 0x2444 // LBE-1421 Dual Output
 #define PID_LBE_1423 0x226f // LBE-1423 differential pps
+#define PID_LBE_1425 0x2269 // LBE-1425 increased-stability dual output (CDC+HID composite)
 #define PID_LBE_MINI 0x2211 // Mini Precision GPS Reference Clock
 
 /* Device status bits */
@@ -56,5 +57,10 @@
 #define LBE_1420_MAX_FREQ 1600000000UL
 #define LBE_1421_MAX_FREQ 1400000000UL
 #define LBE_MINI_MAX_FREQ 810000000UL
+/* LBE-1425 has asymmetric per-output limits: OUT1 <= 800 MHz (the 1PPS
+ * output), OUT2 <= 1.4 GHz. The current 1421 ops use a single max_freq;
+ * per-output enforcement is a TODO -- see docs/reverse/LBE-1425-RE-plan.md. */
+#define LBE_1425_OUT1_MAX_FREQ 800000000UL
+#define LBE_1425_OUT2_MAX_FREQ 1400000000UL
 
 #endif // LBE_COMMON_H

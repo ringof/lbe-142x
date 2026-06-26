@@ -26,7 +26,7 @@ void print_usage(int model) {
 	printf("Options:\n");
 	printf("  --help                 Show this help\n");
 	printf("  --pid <0xNNNN>         Select a specific LBE device when more than one is attached\n");
-	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2211=Mini)\n");
+	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)\n");
 
 	if (generic)
 		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421 <=%lu, Mini <=%lu)\n",
@@ -127,9 +127,19 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	printf("Connected to LBE-%s\n",
-	       model == LBE_1420 ? "1420" :
-	       model == LBE_MINI ? "Mini" : "1421 dual output");
+	/* Several dual-output models (1421/1423/1425) share the LBE_1421_DUALOUT
+	 * ops vtable, so name the device from its actual PID rather than the
+	 * coarse model enum. */
+	const char *model_name;
+	switch (lbe_get_pid(dev)) {
+	case PID_LBE_1420: model_name = "1420"; break;
+	case PID_LBE_1421: model_name = "1421 dual output"; break;
+	case PID_LBE_1423: model_name = "1423 dual output"; break;
+	case PID_LBE_1425: model_name = "1425 dual output"; break;
+	case PID_LBE_MINI: model_name = "Mini"; break;
+	default:           model_name = "142x"; break;
+	}
+	printf("Connected to LBE-%s\n", model_name);
 
 	if (model == LBE_1420) {
 		max_freq = LBE_1420_MAX_FREQ;

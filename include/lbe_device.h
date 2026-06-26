@@ -40,6 +40,9 @@ struct lbe_status {
 struct lbe_device* lbe_open_device(uint16_t preferred_pid);
 void lbe_close_device(struct lbe_device* dev);
 enum lbe_model lbe_get_model(struct lbe_device* dev);
+/* The exact USB product id the device enumerated with. Lets callers
+ * distinguish models that share an ops vtable (1421/1423/1425). */
+uint16_t lbe_get_pid(struct lbe_device* dev);
 int lbe_get_device_status(struct lbe_device* dev, struct lbe_status* status);
 int lbe_set_frequency(struct lbe_device* dev, int output, uint32_t frequency);
 int lbe_set_outputs_enable(struct lbe_device* dev, int enable);

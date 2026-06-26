@@ -7,6 +7,7 @@ Cross-platform configuration tool for Leo Bodnar GPS-disciplined clock source de
 | LBE-1420   | 0x2443   | 1       | up to 1600 MHz                         |
 | LBE-1421   | 0x2444   | 2       | up to 1400 MHz, dual-output, NMEA over CDC |
 | LBE-1423   | 0x226f   | 2       | same protocol as 1421                  |
+| LBE-1425   | 0x2269   | 2       | increased stability; OUT1 <=800 MHz +1PPS, OUT2 <=1.4 GHz; 1421 protocol (provisional) |
 | LBE-Mini   | 0x2211   | 1       | up to 810 MHz, UBX stream over HID     |
 
 Configures device settings, sets frequencies, and provides a live GPS monitor.

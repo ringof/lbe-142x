@@ -13,12 +13,14 @@
 struct lbe_device {
 	struct lbe_transport *transport;
 	enum lbe_model model;
+	uint16_t pid;
 	const struct lbe_model_ops *ops;
 };
 
 struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 	static const uint16_t pids[] = {
-		PID_LBE_1420, PID_LBE_1421, PID_LBE_1423, PID_LBE_MINI, 0
+		PID_LBE_1420, PID_LBE_1421, PID_LBE_1423, PID_LBE_1425,
+		PID_LBE_MINI, 0
 	};
 	uint16_t pid = 0;
 	struct lbe_transport *t = lbe_transport_open(VID_LBE, pids,
@@ -28,6 +30,7 @@ struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 	struct lbe_device *dev = calloc(1, sizeof *dev);
 	if (!dev) { lbe_transport_close(t); return NULL; }
 	dev->transport = t;
+	dev->pid = pid;
 
 	switch (pid) {
 	case PID_LBE_1420:
@@ -39,10 +42,14 @@ struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 		dev->ops = &lbe_ops_mini;
 		break;
 	case PID_LBE_1423:
+	case PID_LBE_1425:
 	case PID_LBE_1421:
 	default:
-		/* 1423 shares the 1421 wire format until we capture
-		 * evidence of a difference. */
+		/* 1423 and 1425 share the 1421 CDC+HID wire format (HID
+		 * feature reports for config, NMEA over CDC) until we capture
+		 * evidence of a difference. The 1425's per-output frequency
+		 * caps (OUT1 <= 800 MHz) are not yet enforced -- see
+		 * docs/reverse/LBE-1425-RE-plan.md. */
 		dev->model = LBE_1421_DUALOUT;
 		dev->ops = &lbe_ops_1421;
 		break;
@@ -60,6 +67,10 @@ void lbe_close_device(struct lbe_device *dev) {
 
 enum lbe_model lbe_get_model(struct lbe_device *dev) {
 	return dev->model;
+}
+
+uint16_t lbe_get_pid(struct lbe_device *dev) {
+	return dev->pid;
 }
 
 int lbe_get_device_status(struct lbe_device *dev, struct lbe_status *s) {
