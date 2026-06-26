@@ -51,11 +51,33 @@ OPCODE_NAMES = {
 REPORT_TYPE = {1: "Input", 2: "Output", 3: "Feature"}
 
 
-def hexbytes(capdata):
-    """tshark gives capdata as 'aa:bb:cc' or '' -- normalise to spaced hex."""
-    if not capdata:
-        return ""
-    return " ".join(capdata.split(":")).upper()
+def parse_capdata(s):
+    """Turn a tshark hex field into a list of byte values, tolerant of the
+    several shapes tshark emits: ':'-separated ('b5:62'), comma-joined
+    repeated fields, or one continuous hex string ('b562...'). Skips any
+    token that isn't a single byte instead of crashing."""
+    if not s:
+        return []
+    s = s.strip()
+    if "," in s:                       # repeated field occurrences
+        s = max(s.split(","), key=len)
+    toks = s.split(":") if ":" in s else [s[i:i + 2] for i in range(0, len(s), 2)]
+    out = []
+    for t in toks:
+        t = t.strip()
+        if not t:
+            continue
+        try:
+            v = int(t, 16)
+        except ValueError:
+            continue
+        if 0 <= v <= 0xFF:
+            out.append(v)
+    return out
+
+
+def hexbytes(byte_list):
+    return " ".join(f"{b:02X}" for b in byte_list)
 
 
 def decode_u32_le(byte_list, offset):
@@ -89,35 +111,43 @@ def parse(pcap, tshark, vid, addr):
     rows = run_tshark(tshark, pcap, ctrl_filter, [
         "frame.number", "frame.time_relative",
         "usb.bmRequestType", "usb.setup.bRequest",
-        "usb.setup.wValue", "usb.capdata",
+        "usb.setup.wValue", "usb.capdata", "usb.data_fragment",
     ])
 
     print("=== HID Feature reports (control transfers) ===")
+    print("opcode = payload byte 0 (these devices read the command from the")
+    print("first data byte; the HID report-ID in wValue may just be 0).\n")
     print(f"{'#':>5} {'time':>10}  {'dir':<4} {'req':<11} {'rptID':>5} "
-          f"{'type':<7} annotation")
+          f"{'op':>4}  annotation")
     print("-" * 78)
     seen_opcodes = set()
     for line in rows:
         cols = line.split("\t")
-        cols += [""] * (6 - len(cols))
-        num, t, brt, breq, wval, capdata = cols[:6]
+        cols += [""] * (7 - len(cols))
+        num, t, brt, breq, wval, capdata, datafrag = cols[:7]
         try:
             wval_i = int(wval, 16) if wval else 0
         except ValueError:
             wval_i = 0
         report_id = wval_i & 0xFF
-        report_type = (wval_i >> 8) & 0xFF
         breq_i = int(breq, 16) if breq else 0
         direction = "OUT" if breq_i == 0x09 else "IN"
         reqname = "SET_REPORT" if breq_i == 0x09 else "GET_REPORT"
-        anno = OPCODE_NAMES.get(report_id, "*** UNKNOWN opcode ***")
-        seen_opcodes.add(report_id)
 
-        databytes = [int(x, 16) for x in capdata.split(":")] if capdata else []
+        # The OUT payload may land in usb.capdata or usb.data_fragment
+        # depending on tshark version / usbmon framing -- take whichever
+        # is present.
+        databytes = parse_capdata(capdata) or parse_capdata(datafrag)
+        # The real opcode is the first payload byte; fall back to the
+        # wValue report-id only if there's no payload (e.g. GET_REPORT).
+        opcode = databytes[0] if databytes else report_id
+        anno = OPCODE_NAMES.get(opcode, "*** UNKNOWN opcode ***")
+        seen_opcodes.add(opcode)
+
         extra = ""
         # Frequency commands carry a LE u32; show both 1420 (offset 1) and
         # 1421 (offset 5) interpretations so the layout is obvious.
-        if report_id in (0x03, 0x04, 0x05, 0x06, 0x09, 0x0A) and databytes:
+        if opcode in (0x03, 0x04, 0x05, 0x06, 0x09, 0x0A) and databytes:
             f1 = decode_u32_le(databytes, 1)
             f5 = decode_u32_le(databytes, 5)
             parts = []
@@ -130,9 +160,9 @@ def parse(pcap, tshark, vid, addr):
 
         tfmt = f"{float(t):.3f}" if t else ""
         print(f"{num:>5} {tfmt:>10}  {direction:<4} {reqname:<11} "
-              f"0x{report_id:02X} {REPORT_TYPE.get(report_type, '?'):<7} {anno}{extra}")
+              f"0x{report_id:02X} 0x{opcode:02X}  {anno}{extra}")
         if databytes:
-            print(f"{'':>5} {'':>10}  data: {hexbytes(capdata)}")
+            print(f"{'':>5} {'':>10}  data: {hexbytes(databytes)}")
 
     # --- interrupt-IN (GPS stream: NMEA over CDC, or UBX over HID) ---
     print("\n=== Interrupt-IN frames (first 20; GPS stream?) ===")
@@ -145,18 +175,17 @@ def parse(pcap, tshark, vid, addr):
         cols = line.split("\t")
         cols += [""] * (2 - len(cols))
         num, capdata = cols[:2]
-        if not capdata:
+        databytes = parse_capdata(capdata)
+        if not databytes:
             continue
-        databytes = [int(x, 16) for x in capdata.split(":")]
-        head = bytes(databytes[:2])
         hint = ""
-        if head == b"\xb5\x62":
+        if databytes[:2] == [0xB5, 0x62]:
             hint = "  <- UBX sync (b5 62) -- Mini-style"
-        elif databytes and databytes[0] == ord("$"):
+        elif databytes[0] == ord("$"):
             hint = "  <- NMEA '$' -- 1421-style"
         ascii_preview = "".join(
             chr(c) if 0x20 <= c < 0x7F else "." for c in databytes[:24])
-        print(f"{num:>5}  {hexbytes(capdata)[:48]:<48} |{ascii_preview}|{hint}")
+        print(f"{num:>5}  {hexbytes(databytes)[:48]:<48} |{ascii_preview}|{hint}")
         shown += 1
         if shown >= 20:
             break
