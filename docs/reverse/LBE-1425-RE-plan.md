@@ -184,15 +184,22 @@ From Rung 0 we know HID-interrupt vs CDC. Then:
 
 ## Evidence (fill in as captures arrive)
 
-### Rung 0 — descriptors
-> _PID:_
-> _Interfaces / classes:_
-> _Endpoints:_
-> _Kernel nodes:_
+### Rung 0 — descriptors (CONFIRMED 2026-06-26)
+> _PID:_ **0x2269**, `bcdDevice 1.10`, serial `0C7BB80E70E5`.
+> _Interfaces / classes:_ composite IAD device (`bDeviceClass 0xEF`). IF0+IF1 =
+> CDC ACM (Communications + CDC Data), IF2 = HID. Same CDC+HID shape as 1421.
+> _Endpoints:_ CDC notify EP `0x81` (interrupt, 10B), CDC data bulk `0x02`/`0x82`;
+> HID interrupt-IN EP `0x83` (64B). Config goes over EP0 feature reports.
+> _Kernel nodes:_ HID → `hidrawN` (root-only); CDC → `/dev/ttyACMx`. NOTE: when
+> the device is USB-redirected into the Boxes Windows VM, the host kernel binds
+> no driver and creates no nodes (and reads return EBUSY) — un-share it first.
 
-### Rung 1 — `--status` / `--rawdump`
-> _Status decode plausible?_
-> _Interrupt-IN stream?_
+### Rung 1 — `--status` (CONFIRMED 2026-06-26: 1421-compatible read)
+> `--pid 0x2269 --status` decodes cleanly against the 1421 layout:
+> raw 0xEE → GPS Lock No, PLL Lock Yes, Antenna OK, OUT1+OUT2 enabled, 1PPS on;
+> OUT1 10 MHz, OUT2 27 MHz, PLL mode. Status report ID `0x4B`, freq1 @ byte 6,
+> freq2 @ byte 14, flags @ 18-20 all match the 1421. **Read path = 1421 verbatim.**
+> _Still TODO:_ confirm write opcodes/offsets (Rung 2), GPS stream (Rung 3).
 
 ### Rung 2 — vendor-tool opcode map
 | Operation | wValue (report id) | payload bytes | matches LBE_1421_*? |
