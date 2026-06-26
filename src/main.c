@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
 	uint16_t preferred_pid = 0;
 	int help_requested = 0;
 
-	printf("lbe-142x v1.2 20 Apr 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
+	printf("lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
 
 	/* Pre-scan for --pid and --help so device-open can filter the
 	 * enumeration and --help works without a device attached. */

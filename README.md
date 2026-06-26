@@ -93,7 +93,7 @@ All three toolchains treat warnings as errors (`/W4 /WX` on MSVC, `-Wall -Wextra
 Run with no device attached (or with `--help --pid 0xDEAD`) to see the generic help covering every supported model:
 
 ```
-lbe-142x v1.2 20 Apr 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config
+lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config
 Usage: lbe-142x [OPTIONS]
 Options:
   --help                 Show this help
