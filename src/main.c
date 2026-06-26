@@ -272,6 +272,9 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		} else if (strcmp(argv[i], "--monitor") == 0) {
+			/* Let the shared monitor impl render the real model in its
+			 * title (1421/1423/1425 share one monitor function). */
+			lbe_setenv("LBE_MODEL_NAME", model_name);
 			lbe_monitor(dev);
 			changed = 1;
 		} else if (strcmp(argv[i], "--gps-info") == 0) {

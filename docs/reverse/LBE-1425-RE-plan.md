@@ -206,10 +206,23 @@ From Rung 0 we know HID-interrupt vs CDC. Then:
 |-----------|--------------------|---------------|---------------------|
 |           |                    |               |                     |
 
-### Rung 3 — GPS stream
-> _Transport (CDC NMEA / HID UBX):_
-> _Port or endpoint:_
-> _1PPS carrier:_
+### Rung 3 — GPS stream (CONFIRMED 2026-06-26)
+> _Transport (CDC NMEA / HID UBX):_ **CDC NMEA**, identical to the 1421.
+> _Port or endpoint:_ `/dev/ttyACM0` (auto-discovered). 1147 lines, 1 bad ck.
+> _1PPS carrier:_ **DCD line confirmed.** With a 3D fix (11 SVs, GPS+GLONASS),
+> the chronometer locked: edges=114, avg=999 ms, min=984, max=1017 -- a clean
+> 1 Hz, jitter bounded by OS clock resolution as documented. Also exercised the
+> write path: `--f2t` changed OUT2 and read back via `--status`.
+
+### Summary
+
+The LBE-1425 is a 1421 on the wire: status report `0x4B`, the same config
+opcodes, NMEA over CDC, and 1PPS on DCD all behave identically. The only
+confirmed functional difference is the asymmetric per-output frequency ceiling
+(OUT1 <= 800 MHz, OUT2 <= 1.4 GHz), now enforced. The vendor tool has not yet
+been captured, so any *new* "increased stability" command or telemetry field
+(holdover/disciplining state beyond the 1421's status bits) remains unverified
+-- a Rung 2 usbmon capture is the way to check for it.
 
 ## Open questions
 

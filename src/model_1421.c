@@ -172,6 +172,15 @@ static int m1421_monitor(struct lbe_transport *t) {
 	struct lbe_serial *s = lbe_serial_open(port);
 	if (!s) return -1;
 
+	/* main.c passes the concrete model ("1425 dual output", ...) via env;
+	 * fall back to the family name when run standalone. */
+	char model_name[64];
+	char title[96];
+	if (!lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		snprintf(title, sizeof title, "LBE-142x GPS Monitor");
+	else
+		snprintf(title, sizeof title, "LBE-%s GPS Monitor", model_name);
+
 	struct gnss_pvt pvt = {0};
 	struct gnss_svinfo sv = {0};
 	struct nmea_state st;
@@ -223,7 +232,7 @@ static int m1421_monitor(struct lbe_transport *t) {
 			if (f > 999) f = 999;  /* cap if PPS stalls */
 			frac_ms = (int)f;
 		}
-		gnss_draw("LBE-1421 GPS Monitor", &pvt, &sv, frac_ms);
+		gnss_draw(title, &pvt, &sv, frac_ms);
 
 		if (pps.edges == 0) {
 			printf("\nPPS:    waiting for DCD edge...\033[K\n");
