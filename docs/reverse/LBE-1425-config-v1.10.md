@@ -35,7 +35,7 @@ Confirmed identical to the LBE-1421 (`include/lbe_common.h`):
 | `0x06` | SET_F1    | u32 LE freq at **byte 5**            | 10 000 000 Hz       |
 | `0x0A` | SET_F2    | u32 LE freq at byte 5                | 27 000 000 Hz       |
 | `0x0B` | SET_PLL   | `[1]` = 0 PLL / 1 FLL                | both                |
-| `0x0C` | SET_PPS   | `[1]` = 0 off / 1 on                 | both                |
+| `0x0C` | SET_PPS   | `[1]` = 0 off / 1 on                 | both (see note)     |
 | `0x0D` | SET_PWR1  | `[1]` = 0 normal / 1 low             | both                |
 | `0x0E` | SET_PWR2  | `[1]` = 0 normal / 1 low             | both                |
 
@@ -51,6 +51,12 @@ Not present in the 1421 map — **LBE-1425-specific, function not yet identified
 `0x08` is issued repeatedly by the GUI (3 distinct sub-selectors cycling) and is
 almost certainly how the vendor app reads the extended "increased stability"
 telemetry. The `[6]` byte (0x07/0x22/0x35) likely selects what to read.
+
+Note (SET_PPS): enabling PPS in the vendor UI forces OUT1 into PPS-only mode and
+shows a 10 MHz default, but the **only** USB command emitted is `0x0C 01` (and
+`0x0C 00` to disable) -- the OUT1 reconfiguration is firmware-internal or
+UI-side, not a separate command. This tool's `--pps` already sends exactly that,
+so it fully replicates the vendor behaviour. (Confirmed live via usbmon_live.py.)
 
 ## Status read (GET_REPORT, report-ID 0, 60 bytes)
 

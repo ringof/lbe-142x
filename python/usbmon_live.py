@@ -107,6 +107,10 @@ def describe(ev):
             f = u32le(data, 5)
             if f is not None:
                 extra = f"freq={f} Hz (@byte5)"
+        elif op == 0x08:
+            # 08 06 01 08 00 01 <sel> 0A -- the GUI cycles <sel> at byte 6
+            sel = data[6] if len(data) > 6 else 0
+            extra = f"poll sel=0x{sel:02X}"
         hexd = " ".join(f"{b:02X}" for b in data[:12])
         return f"SET_REPORT  op=0x{op:02X} {name:24} {extra}   [{hexd}]"
     if bm == 0xA1 and req == 0x01:        # GET_REPORT response (status read)
@@ -125,6 +129,9 @@ def main():
                          "lsusb); omit to watch all control transfers")
     ap.add_argument("--reads", action="store_true",
                     help="also print GET_REPORT status reads (noisy: the GUI polls)")
+    ap.add_argument("--no-poll", action="store_true",
+                    help="hide the 0x08 telemetry-poll chatter the GUI emits "
+                         "continuously, so discrete actions stand out")
     ap.add_argument("node", nargs="?", default=None,
                     help="usbmon text node to read (e.g. /sys/kernel/debug/usb/"
                          "usbmon/3u); omit to read stdin")
@@ -144,6 +151,8 @@ def main():
         if not ev or ev["setup"] is None:
             continue
         if args.dev is not None and ev["dev"] != args.dev:
+            continue
+        if args.no_poll and ev["data"][:1] == b"\x08":
             continue
         desc = describe(ev)
         if not desc:
