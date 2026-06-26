@@ -147,12 +147,11 @@ OUT1=OUT2=10 MHz, PLL mode, PPS off, NMEA off, both outputs normal power.
 - Core 1421 command + status protocol: **confirmed**, works in this tool.
 - `0x03` SET_GNSS, `0x04` SET_DYNMODEL, `0x0F` SET_NMEA: **confirmed and
   implemented** (`--gnss` / `--dynmodel` / `--nmea`).
-- `0x08` poll + EP 0x83 stream: **identified and implemented** as `--diag`,
-  reusing the shared UBX parser (src/ubx.c) to render the NAV-SAT CNR histogram
-  + NAV-CLOCK disciplining line. Validated offline against the captured EP 0x83
-  frames (21 NAV-PVT, 32-ch NAV-SAT, NAV-CLOCK bias/drift decoded). Open hardware
-  question: whether the stream free-runs or needs the 0x08 poll to start --
-  `--diag` replays the vendor's poll best-effort to cover both.
+- `0x08` poll + EP 0x83 stream: **identified, implemented, and confirmed on
+  hardware** as `--diag`. Renders the NAV-SAT CNR histogram (GPS/Galileo/GLONASS)
+  + a NAV-CLOCK disciplining line. Live on an LBE-1425: 3D fix, 14 SVs, clock
+  bias ~-0.5 ms, drift -12 ns/s, tAcc 4 ns, fAcc 244 ps/s. The stream free-runs
+  (the best-effort 0x08 poll is not required but is harmless).
 - Status tail bytes 21-24 (`67 02 05 00`): the richer telemetry now looks to live
   in the UBX stream (NAV-CLOCK), so these GET_REPORT tail bytes are likely minor
   (fw/build id?) — lower priority.
