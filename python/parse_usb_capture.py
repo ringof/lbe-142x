@@ -45,8 +45,15 @@ OPCODE_NAMES = {
     0x0C: "1421_SET_PPS",
     0x0D: "1421_SET_PWR1",
     0x0E: "1421_SET_PWR2",
+    0x0F: "1425-NEW (toggle 0/1, function TBD)",
     0x4B: "STATUS_REPORT (read)",
 }
+
+# Opcodes the LBE-1425 vendor tool uses that the 1421 does not. Flagged so a
+# capture makes the new surface obvious; functions documented (TBD) in
+# docs/reverse/LBE-1425-config-v1.10.md. (0x03/0x04/0x08 also appear in the
+# 1420/Mini maps above with different meanings; on the 1425 they're new.)
+LBE1425_NEW_OPCODES = {0x03, 0x04, 0x08, 0x0F}
 
 REPORT_TYPE = {1: "Input", 2: "Output", 3: "Feature"}
 
@@ -196,17 +203,22 @@ def parse(pcap, tshark, vid, addr):
     # --- verdict ---
     print("\n=== Verdict ===")
     unknown = sorted(o for o in seen_opcodes if o not in OPCODE_NAMES)
+    new1425 = sorted(o for o in seen_opcodes if o in LBE1425_NEW_OPCODES)
     if not seen_opcodes:
         print("No HID feature reports seen. Either the capture missed the "
               "control transfers or this device uses a different mechanism.")
-    elif unknown:
-        print("Unknown opcodes seen: " +
+        return
+    if unknown:
+        print("Fully-unknown opcodes seen: " +
               ", ".join(f"0x{o:02X}" for o in unknown) +
-              "  -> NOT a clean 1421 clone; new protocol bits to map.")
-    else:
-        print("All opcodes match the known 1420/1421 map -> 1425 likely "
-              "reuses the 1421 wire protocol. Confirm freq offsets above "
-              "(@5 = 1421 layout) and the 0x4B status layout.")
+              "  -> new protocol bits to map.")
+    if new1425:
+        print("LBE-1425-specific opcodes seen: " +
+              ", ".join(f"0x{o:02X}" for o in new1425) +
+              "  -> beyond the 1421 set; see docs/reverse/LBE-1425-config-v1.10.md.")
+    if not unknown and not new1425:
+        print("All opcodes match the known 1420/1421 map -> reuses the 1421 "
+              "wire protocol. Confirm freq offsets above (@5 = 1421 layout).")
 
 
 def main():
