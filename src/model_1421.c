@@ -9,6 +9,7 @@
 #include "lbe_platform.h"
 #include "nmea.h"
 #include "gnss_view.h"
+#include "ubx.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -109,6 +110,25 @@ static int m1421_set_power_level(struct lbe_transport *t, int output, int low) {
 	return send_cmd(t, opcode, &arg, 1, 1);
 }
 
+/* --- LBE-1425-only commands ---------------------------------------------
+ * Same SET_REPORT feature-report transport as the rest of the 1421 family
+ * (opcode in payload byte 0, arg in byte 1). Confirmed against a vendor-tool
+ * USB capture; see docs/reverse/LBE-1425-config-v1.10.md. Wired into
+ * lbe_ops_1425 only, so 1421/1423 never emit these opcodes (which would mean
+ * something else on those models). */
+static int m1425_set_gnss(struct lbe_transport *t, uint8_t mask) {
+	return send_cmd(t, LBE_1425_SET_GNSS, &mask, 1, 1);
+}
+
+static int m1425_set_dynmodel(struct lbe_transport *t, uint8_t model) {
+	return send_cmd(t, LBE_1425_SET_DYNMODEL, &model, 1, 1);
+}
+
+static int m1425_set_nmea(struct lbe_transport *t, int enable) {
+	uint8_t arg = enable ? 0x01 : 0x00;
+	return send_cmd(t, LBE_1425_SET_NMEA, &arg, 1, 1);
+}
+
 /* Live chronometer-style NMEA + 1PPS monitor. The 1421 streams GPS
  * data over USB CDC (not HID) and drives the u-blox 1PPS onto the
  * CDC DCD line. Port selection: LBE_PORT env var first, else first
@@ -172,6 +192,15 @@ static int m1421_monitor(struct lbe_transport *t) {
 	struct lbe_serial *s = lbe_serial_open(port);
 	if (!s) return -1;
 
+	/* main.c passes the concrete model ("1425 dual output", ...) via env;
+	 * fall back to the family name when run standalone. */
+	char model_name[64];
+	char title[96];
+	if (!lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		snprintf(title, sizeof title, "LBE-142x GPS Monitor");
+	else
+		snprintf(title, sizeof title, "LBE-%s GPS Monitor", model_name);
+
 	struct gnss_pvt pvt = {0};
 	struct gnss_svinfo sv = {0};
 	struct nmea_state st;
@@ -223,7 +252,7 @@ static int m1421_monitor(struct lbe_transport *t) {
 			if (f > 999) f = 999;  /* cap if PPS stalls */
 			frac_ms = (int)f;
 		}
-		gnss_draw("LBE-1421 GPS Monitor", &pvt, &sv, frac_ms);
+		gnss_draw(title, &pvt, &sv, frac_ms);
 
 		if (pps.edges == 0) {
 			printf("\nPPS:    waiting for DCD edge...\033[K\n");
@@ -249,6 +278,74 @@ static int m1421_monitor(struct lbe_transport *t) {
 	return 0;
 }
 
+/* --- LBE-1425 UBX diagnostics monitor --------------------------------------
+ * The 1425 streams u-blox UBX (NAV-PVT / NAV-SAT / NAV-CLOCK) out of its HID
+ * interrupt-IN endpoint 0x83, each 64-byte frame headed by [seq][len] where
+ * len (typically 0x3E = 62) is the UBX-payload byte count and a len of 0 marks
+ * a keepalive frame. We strip that 2-byte header and feed the rest to the
+ * shared UBX reassembler, rendering the same CNR view as the Mini plus a
+ * NAV-CLOCK disciplining line. See docs/reverse/LBE-1425-config-v1.10.md. */
+#define LBE_1425_DIAG_EP   0x83
+#define LBE_1425_DIAG_FRM  64
+
+/* Best-effort: replay the three UBX-poll requests the vendor GUI issues so a
+ * device that only streams when polled starts sending. Harmless if the stream
+ * is already free-running. */
+static void m1425_diag_poll(struct lbe_transport *t) {
+	static const uint8_t sels[3] = {0x35, 0x22, 0x07};
+	for (int i = 0; i < 3; i++) {
+		uint8_t args[7] = {0x06, 0x01, 0x08, 0x00, 0x01, sels[i], 0x0A};
+		send_cmd(t, LBE_MINI_UBX_WRAP, args, 1, sizeof args);
+	}
+}
+
+static int m1425_diag(struct lbe_transport *t) {
+	lbe_transport_claim(t);
+
+	struct gnss_pvt    pvt = {0};
+	struct gnss_svinfo sv  = {0};
+	struct ubx_clock   clk = {0};
+	uint8_t buf[1024];
+	size_t  buf_len = 0;
+
+	lbe_enable_vt();
+	printf("\033[2J\033[H");
+	printf("Requesting UBX diagnostics stream...\n");
+	fflush(stdout);
+
+	m1425_diag_poll(t);
+	uint32_t last_poll = lbe_millis();
+
+	for (;;) {
+		uint8_t r[LBE_1425_DIAG_FRM];
+		int got = lbe_transport_read_input(t, LBE_1425_DIAG_EP, r, sizeof r, 500);
+		if (got < 0) break;
+
+		/* Re-poll ~once a second in case the stream needs keeping alive. */
+		uint32_t now = lbe_millis();
+		if (now - last_poll > 1000) { m1425_diag_poll(t); last_poll = now; }
+
+		/* Frame = [seq][len][payload]; len 0 is a keepalive. */
+		if (got >= 3 && r[1] != 0) {
+			size_t payload = r[1];
+			if (payload > (size_t)(got - 2)) payload = (size_t)(got - 2);
+			if (ubx_consume(buf, &buf_len, sizeof buf, r + 2, payload,
+			                &pvt, &sv, &clk) > 0) {
+				gnss_draw("LBE-1425 GPS Diagnostics", &pvt, &sv, -1);
+				if (clk.valid) {
+					printf("\nClock:  bias=%+d ns  drift=%+d ns/s  "
+					       "tAcc=%u ns  fAcc=%u ps/s\033[K\n\033[J",
+					       clk.clkb_ns, clk.clkd_nsps, clk.tacc_ns, clk.facc_ps);
+				}
+				fflush(stdout);
+			}
+		}
+	}
+
+	lbe_transport_release(t);
+	return 0;
+}
+
 const struct lbe_model_ops lbe_ops_1421 = {
 	.name               = "1421 dual output",
 	.max_freq           = LBE_1421_MAX_FREQ,
@@ -262,4 +359,26 @@ const struct lbe_model_ops lbe_ops_1421 = {
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
 	.monitor            = m1421_monitor,
+};
+
+/* LBE-1425: the 1421 dual-output protocol verbatim, plus the 1425's extra
+ * GNSS / dynamic-model / NMEA-output commands. (Per-output frequency caps
+ * are enforced separately in lbe_device.c via the PID.) */
+const struct lbe_model_ops lbe_ops_1425 = {
+	.name               = "1425 dual output",
+	.max_freq           = LBE_1425_OUT2_MAX_FREQ,
+	.init               = NULL,
+	.get_status         = m1421_get_status,
+	.set_frequency      = m1421_set_frequency,
+	.set_frequency_temp = m1421_set_frequency_temp,
+	.set_outputs_enable = m1421_set_outputs_enable,
+	.blink_leds         = m1421_blink_leds,
+	.set_pll_mode       = m1421_set_pll_mode,
+	.set_1pps           = m1421_set_1pps,
+	.set_power_level    = m1421_set_power_level,
+	.monitor            = m1421_monitor,
+	.set_gnss           = m1425_set_gnss,
+	.set_dynmodel       = m1425_set_dynmodel,
+	.set_nmea           = m1425_set_nmea,
+	.diag               = m1425_diag,
 };

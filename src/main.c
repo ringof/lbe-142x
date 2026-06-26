@@ -12,7 +12,7 @@
 
 #define MODEL_GENERIC (-1)
 
-void print_usage(int model) {
+void print_usage(int model, int is_1425) {
 	int generic = (model == MODEL_GENERIC);
 	int is_1420 = (model == LBE_1420);
 	int is_mini = (model == LBE_MINI);
@@ -26,7 +26,7 @@ void print_usage(int model) {
 	printf("Options:\n");
 	printf("  --help                 Show this help\n");
 	printf("  --pid <0xNNNN>         Select a specific LBE device when more than one is attached\n");
-	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2211=Mini)\n");
+	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)\n");
 
 	if (generic)
 		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421 <=%lu, Mini <=%lu)\n",
@@ -65,16 +65,29 @@ void print_usage(int model) {
 		printf("  --drive <8|16|24|32>   Set OUT1 drive strength in mA%s\n",
 		       generic ? " (Mini only)" : "");
 
+	if (generic || is_1425) {
+		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
+		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40)%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+		printf("  --dynmodel <model>     Set u-blox dynamic model"
+		       " (portable|stationary|pedestrian|automotive|sea|airborne)%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+		printf("  --nmea <0|1>           Enable or disable NMEA output%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+		printf("  --diag                 Live UBX diagnostics (CNR histogram + clock"
+		       " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
+	}
+
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
 	printf("  --status               Display current device status\n");
 
 	if (generic || is_mini || is_1421) {
 		printf("  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
-		       generic ? " (Mini: UBX; 1421/1423: NMEA via CDC)" : "");
+		       generic ? " (Mini: UBX; 1421/1423/1425: NMEA via CDC)" : "");
 	}
 	if (generic || is_1421) {
 		printf("  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
-		       generic ? " (LBE-1421/1423)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
 	if (generic || is_mini) {
 		printf("  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER)%s\n",
@@ -87,11 +100,10 @@ int main(int argc, char *argv[]) {
 	struct lbe_status status;
 	enum lbe_model model;
 	int changed = 0;
-	unsigned long max_freq = LBE_1421_MAX_FREQ;
 	uint16_t preferred_pid = 0;
 	int help_requested = 0;
 
-	printf("lbe-142x v1.2 20 Apr 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
+	printf("lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
 
 	/* Pre-scan for --pid and --help so device-open can filter the
 	 * enumeration and --help works without a device attached. */
@@ -104,38 +116,43 @@ int main(int argc, char *argv[]) {
 	}
 
 	dev = lbe_open_device(preferred_pid);
+	int is_1425 = dev && lbe_get_pid(dev) == PID_LBE_1425;
 
 	if (help_requested) {
 		/* If a device is attached, show the help tailored to it. Else
 		 * show the generic help covering every supported model. */
-		print_usage(dev ? (int)lbe_get_model(dev) : MODEL_GENERIC);
+		print_usage(dev ? (int)lbe_get_model(dev) : MODEL_GENERIC, is_1425);
 		if (dev) lbe_close_device(dev);
 		return 0;
 	}
 
 	if (!dev) {
 		fprintf(stderr, "\n");
-		print_usage(MODEL_GENERIC);
+		print_usage(MODEL_GENERIC, 0);
 		return 1;
 	}
 
 	model = lbe_get_model(dev);
 
 	if (argc == 1) {
-		print_usage(model);
+		print_usage(model, is_1425);
 		lbe_close_device(dev);
 		return 1;
 	}
 
-	printf("Connected to LBE-%s\n",
-	       model == LBE_1420 ? "1420" :
-	       model == LBE_MINI ? "Mini" : "1421 dual output");
-
-	if (model == LBE_1420) {
-		max_freq = LBE_1420_MAX_FREQ;
-	} else if (model == LBE_MINI) {
-		max_freq = LBE_MINI_MAX_FREQ;
+	/* Several dual-output models (1421/1423/1425) share the LBE_1421_DUALOUT
+	 * ops vtable, so name the device from its actual PID rather than the
+	 * coarse model enum. */
+	const char *model_name;
+	switch (lbe_get_pid(dev)) {
+	case PID_LBE_1420: model_name = "1420"; break;
+	case PID_LBE_1421: model_name = "1421 dual output"; break;
+	case PID_LBE_1423: model_name = "1423 dual output"; break;
+	case PID_LBE_1425: model_name = "1425 dual output"; break;
+	case PID_LBE_MINI: model_name = "Mini"; break;
+	default:           model_name = "142x"; break;
 	}
+	printf("Connected to LBE-%s\n", model_name);
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--f1") == 0 || strcmp(argv[i], "--f2") == 0 || 
@@ -151,7 +168,8 @@ int main(int argc, char *argv[]) {
 
 				unsigned long parsed = strtoul(argv[++i], NULL, 10);
 				uint32_t new_freq = parsed > UINT32_MAX ? 0 : (uint32_t)parsed;
-				if (new_freq >= 1 && new_freq <= max_freq) {
+				uint32_t out_max = lbe_max_freq(dev, out_no);
+				if (new_freq >= 1 && new_freq <= out_max) {
 					if (temp) {
 						if (lbe_set_frequency_temp(dev, out_no, new_freq) == 0) {
 							printf("  Setting OUT%d temporary frequency: %u Hz\n", out_no, new_freq);
@@ -164,7 +182,7 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				} else {
-					fprintf(stderr, "Invalid frequency: %u (range: 1-%lu Hz)\n", new_freq, max_freq);
+					fprintf(stderr, "Invalid frequency: %u (range: 1-%u Hz)\n", new_freq, out_max);
 				}
 			}
 		} else if (strcmp(argv[i], "--out") == 0) {
@@ -232,6 +250,51 @@ int main(int argc, char *argv[]) {
 					changed = 1;
 				}
 			}
+		} else if (strcmp(argv[i], "--gnss") == 0) {
+			if (i + 1 < argc) {
+				unsigned long m = strtoul(argv[++i], NULL, 0);
+				if (m > 0xFF) {
+					fprintf(stderr, "Invalid GNSS mask: %s (expect 0x00-0xFF)\n", argv[i]);
+				} else if (lbe_set_gnss(dev, (uint8_t)m) == 0) {
+					printf("  Set GNSS mask to 0x%02lX\n", m);
+					changed = 1;
+				}
+			}
+		} else if (strcmp(argv[i], "--dynmodel") == 0) {
+			if (i + 1 < argc) {
+				const char *a = argv[++i];
+				int model = -1;
+				if      (strcmp(a, "portable") == 0)   model = 0;
+				else if (strcmp(a, "stationary") == 0) model = 2;
+				else if (strcmp(a, "pedestrian") == 0) model = 3;
+				else if (strcmp(a, "automotive") == 0) model = 4;
+				else if (strcmp(a, "sea") == 0)        model = 5;
+				else if (strcmp(a, "airborne") == 0)   model = 8;
+				else {
+					char *end;
+					unsigned long v = strtoul(a, &end, 0);
+					if (*end == '\0' && v <= 0xFF) model = (int)v;
+				}
+				if (model < 0) {
+					fprintf(stderr, "Invalid dynamic model: %s (portable|stationary|"
+					        "pedestrian|automotive|sea|airborne or a u-blox value)\n", a);
+				} else if (lbe_set_dynmodel(dev, (uint8_t)model) == 0) {
+					printf("  Set dynamic model to %d\n", model);
+					changed = 1;
+				}
+			}
+		} else if (strcmp(argv[i], "--nmea") == 0) {
+			if (i + 1 < argc) {
+				int enable = atoi(argv[++i]);
+				if (enable == 0 || enable == 1) {
+					if (lbe_set_nmea(dev, enable) == 0) {
+						printf("  Set NMEA output %s\n", enable ? "enabled" : "disabled");
+						changed = 1;
+					}
+				} else {
+					fprintf(stderr, "Invalid NMEA state: %d\n", enable);
+				}
+			}
 		} else if (strcmp(argv[i], "--blink") == 0) {
 			if (lbe_blink_leds(dev) == 0) {
 				printf("  Blink LED(s)\n");
@@ -268,10 +331,16 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		} else if (strcmp(argv[i], "--monitor") == 0) {
+			/* Let the shared monitor impl render the real model in its
+			 * title (1421/1423/1425 share one monitor function). */
+			lbe_setenv("LBE_MODEL_NAME", model_name);
 			lbe_monitor(dev);
 			changed = 1;
 		} else if (strcmp(argv[i], "--gps-info") == 0) {
 			lbe_gps_info(dev);
+			changed = 1;
+		} else if (strcmp(argv[i], "--diag") == 0) {
+			lbe_diag(dev);
 			changed = 1;
 		} else if (strcmp(argv[i], "--rawdump") == 0) {
 			/* Hidden RE helper: --rawdump [ep] [ms]. Defaults ep=0x81,
@@ -294,7 +363,7 @@ int main(int argc, char *argv[]) {
 			i++;  /* consumed in the pre-scan above */
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[i]);
-			print_usage(model);
+			print_usage(model, is_1425);
 		}
 	}
 

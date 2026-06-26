@@ -76,6 +76,7 @@ static const char *pid_to_name(uint16_t pid) {
 	case 0x2443: return "LBE-1420";
 	case 0x2444: return "LBE-1421";
 	case 0x226f: return "LBE-1423";
+	case 0x2269: return "LBE-1425";
 	case 0x2211: return "LBE-Mini";
 	default:     return "LBE-???";
 	}

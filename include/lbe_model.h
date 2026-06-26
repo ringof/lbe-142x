@@ -41,10 +41,21 @@ struct lbe_model_ops {
 	/* One-shot UBX-MON-VER poll (u-blox SW/HW version strings). Mini
 	 * only; NULL elsewhere. Prints to stdout, returns 0 on success. */
 	int (*gps_info)(struct lbe_transport *t);
+
+	/* LBE-1425 only (NULL elsewhere). GNSS constellation enable bitmask,
+	 * u-blox dynamic platform model, and NMEA-output enable. */
+	int (*set_gnss)(struct lbe_transport *t, uint8_t mask);
+	int (*set_dynmodel)(struct lbe_transport *t, uint8_t model);
+	int (*set_nmea)(struct lbe_transport *t, int enable);
+
+	/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from
+	 * the EP 0x83 stream). NULL elsewhere. Loops until killed. */
+	int (*diag)(struct lbe_transport *t);
 };
 
 extern const struct lbe_model_ops lbe_ops_1420;
 extern const struct lbe_model_ops lbe_ops_1421;
+extern const struct lbe_model_ops lbe_ops_1425;
 extern const struct lbe_model_ops lbe_ops_mini;
 
 #endif
