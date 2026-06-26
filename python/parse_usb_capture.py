@@ -77,15 +77,15 @@ def run_tshark(tshark, pcap, display_filter, fields):
     return out.stdout.splitlines()
 
 
-def parse(pcap, tshark, vid):
-    vid_filter = f"usb.idVendor == {vid}" if vid else ""
+def parse(pcap, tshark, vid, addr):
+    # usbmon captures a whole bus, so a laptop's camera / fingerprint / BT
+    # share the file. Narrow to the device's address when known (get it from
+    # `lsusb -d 1dd2:` -> "Bus 0NN Device 0MM", pass MM as --addr).
+    addr_clause = f"usb.device_address == {addr} && " if addr else ""
 
     # --- HID control transfers (SET_REPORT 0x09 host->dev, GET_REPORT 0x01) ---
-    ctrl_filter = "usb.setup.bRequest == 0x09 || usb.setup.bRequest == 0x01"
-    if vid_filter:
-        # idVendor only appears on descriptor frames; OR it in loosely so we
-        # don't drop the data-stage frames that lack it.
-        ctrl_filter = f"({ctrl_filter})"
+    ctrl_filter = (f"{addr_clause}"
+                   "(usb.setup.bRequest == 0x09 || usb.setup.bRequest == 0x01)")
     rows = run_tshark(tshark, pcap, ctrl_filter, [
         "frame.number", "frame.time_relative",
         "usb.bmRequestType", "usb.setup.bRequest",
@@ -137,7 +137,8 @@ def parse(pcap, tshark, vid):
     # --- interrupt-IN (GPS stream: NMEA over CDC, or UBX over HID) ---
     print("\n=== Interrupt-IN frames (first 20; GPS stream?) ===")
     int_rows = run_tshark(tshark, pcap,
-                          "usb.transfer_type == 0x01 && usb.endpoint_address.direction == 1",
+                          f"{addr_clause}usb.transfer_type == 0x01 && "
+                          "usb.endpoint_address.direction == 1",
                           ["frame.number", "usb.capdata"])
     shown = 0
     for line in int_rows:
@@ -185,6 +186,9 @@ def main():
     ap.add_argument("pcap", help="usbmon/USBPcap capture file (.pcapng/.pcap)")
     ap.add_argument("--vid", default="0x1dd2",
                     help="USB vendor id to focus on (default 0x1dd2 = Leo Bodnar)")
+    ap.add_argument("--addr", type=int, default=None,
+                    help="usb device address to filter to (the 'Device NNN' "
+                         "from lsusb); recommended for whole-bus usbmon captures")
     ap.add_argument("--tshark", default=None, help="path to tshark binary")
     args = ap.parse_args()
 
@@ -197,7 +201,7 @@ def main():
     except ValueError:
         sys.exit(f"bad --vid: {args.vid}")
 
-    parse(args.pcap, tshark, vid)
+    parse(args.pcap, tshark, vid, args.addr)
 
 
 if __name__ == "__main__":
