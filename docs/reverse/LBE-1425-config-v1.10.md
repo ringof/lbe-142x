@@ -62,6 +62,12 @@ Bits 4/5 (0x10/0x20) likely QZSS/IMES — not toggled in the capture, unconfirme
 e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x00` = all off. Decoded from a live
 off-one-at-a-time / on-in-reverse sweep of the vendor UI's constellation checkboxes.
 
+**Valid-mask constraint** (u-blox concurrent-GNSS rule, enforced by the UI/firmware):
+the GPS/SBAS/Galileo group (`0x01|0x02|0x04`) is **mutually exclusive** with
+BeiDou (`0x08`) — you get one group or the other, not both. GLONASS (`0x40`) may
+be combined with either, with no restriction. A `--gnss` CLI flag should reject
+masks that set BeiDou together with any of GPS/SBAS/Galileo.
+
 `0x08` is issued repeatedly by the GUI (3 distinct sub-selectors cycling) and is
 almost certainly how the vendor app reads the extended "increased stability"
 telemetry. The `[6]` byte (0x07/0x22/0x35) likely selects what to read.
