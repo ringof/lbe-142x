@@ -47,6 +47,9 @@ OPCODE_NAMES = {
     0x0E: "1421_SET_PWR2",
     0x0F: "1425 SET_NMEA (NMEA out 0/1)",
     0x4B: "STATUS_REPORT (read)",
+    # NOTE: on the LBE-1425, 0x03=SET_GNSS and 0x04=SET_DYNMODEL (they collide
+    # numerically with the 1420 freq opcodes named above). See
+    # docs/reverse/LBE-1425-config-v1.10.md.
 }
 
 # Opcodes the LBE-1425 vendor tool uses that the 1421 does not. Flagged so a

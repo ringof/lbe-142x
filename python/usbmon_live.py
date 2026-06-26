@@ -28,7 +28,7 @@ OPCODE_NAMES = {
     0x01: "EN_OUT",
     0x02: "BLINK",
     0x03: "SET_GNSS (constellation mask)",
-    0x04: "1425-NEW (multi-level?)",
+    0x04: "SET_DYNMODEL (u-blox dynModel)",
     0x05: "SET_F1_TEMP",
     0x06: "SET_F1",
     0x08: "1425-NEW (telemetry poll?)",
@@ -44,6 +44,10 @@ OPCODE_NAMES = {
 # GNSS constellation bits for opcode 0x03 (payload byte 1).
 GNSS_BITS = [(0x01, "GPS"), (0x02, "SBAS"), (0x04, "Gal"),
              (0x08, "BeiDou"), (0x40, "GLONASS")]
+
+# u-blox CFG-NAV5 dynModel values for opcode 0x04.
+DYNMODEL = {0: "Portable", 2: "Stationary", 3: "Pedestrian", 4: "Automotive",
+            5: "Sea", 6: "Airborne<1g", 7: "Airborne<2g", 8: "Airborne<4g"}
 
 
 def u32le(b, off):
@@ -118,6 +122,8 @@ def describe(ev):
         elif op == 0x03:
             on = "+".join(n for m, n in GNSS_BITS if arg & m) or "none"
             extra = f"mask=0x{arg:02X} [{on}]"
+        elif op == 0x04:
+            extra = f"dynModel={arg} ({DYNMODEL.get(arg, '?')})"
         hexd = " ".join(f"{b:02X}" for b in data[:12])
         return f"SET_REPORT  op=0x{op:02X} {name:24} {extra}   [{hexd}]"
     if bm == 0xA1 and req == 0x01:        # GET_REPORT response (status read)

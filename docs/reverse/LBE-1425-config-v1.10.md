@@ -45,8 +45,21 @@ LBE-1425-specific (not in the 1421 map). Identified live via usbmon_live.py:
 |--------|------------------|------------------------------|--------|
 | `0x0F` | SET_NMEA (NMEA out enable) | 0 off / 1 on        | **confirmed** |
 | `0x03` | SET_GNSS (constellation mask) | bitmask, see below | **confirmed** |
-| `0x04` | (multi-level, function TBD) | `0x00`/`0x02`/`0x08`  | unmapped |
+| `0x04` | SET_DYNMODEL (u-blox CFG-NAV5 dynModel) | u-blox value | **confirmed** |
 | `0x08` | telemetry poll (GUI), sel byte at `[6]` | `{07,22,35}` | read channel |
+
+### `0x04` SET_DYNMODEL (payload byte 1 = u-blox dynModel)
+
+The value is the u-blox `CFG-NAV5` dynamic platform model, passed through verbatim.
+The vendor UI exposes three; the field accepts the full u-blox enum:
+
+| value | model        | in UI |
+|-------|--------------|-------|
+| 0     | Portable     | yes   |
+| 2     | Stationary   | yes   |
+| 8     | Airborne <4g | yes (as "Airborne") |
+
+(other u-blox values: 3 Pedestrian, 4 Automotive, 5 Sea, 6 Airborne<1g, 7 Airborne<2g)
 
 ### `0x03` SET_GNSS bitmask (payload byte 1)
 
@@ -101,8 +114,11 @@ Constant in this capture; needs captures across state changes to decode.
 
 ## Status / TODO
 
-- Core 1421 command + status protocol: **confirmed**, already works in this tool.
-- `0x03` / `0x04` / `0x0F` writes and the `0x08` poll: opcodes known, **functions
-  not yet mapped** — need the vendor-UI action that produced each (see timeline
-  in the PR discussion) and/or targeted single-operation captures.
-- Status tail bytes 21-24: decode once we can vary the underlying quantity.
+- Core 1421 command + status protocol: **confirmed**, works in this tool.
+- `0x03` SET_GNSS, `0x04` SET_DYNMODEL, `0x0F` SET_NMEA: **confirmed and
+  implemented** (`--gnss` / `--dynmodel` / `--nmea`).
+- `0x08` poll: this is the GUI's telemetry **read** channel; the byte-6 selector
+  cycles `0x07/0x22/0x35`. The returned data (and what each selector fetches) is
+  not yet decoded — would add a richer `--status` for the 1425.
+- Status tail bytes 21-24 (`67 02 05 00`): unexplained extra telemetry; decode
+  once we can vary the underlying quantity (fw version / holdover / temperature?).

@@ -40,6 +40,23 @@
 #define LBE_1420_SET_F1      0x04
 #define LBE_1420_SET_PWR1    0x07
 
+/* LBE-1425-specific opcodes (reverse-engineered from the vendor tool; see
+ * docs/reverse/LBE-1425-config-v1.10.md). They reuse the same SET_REPORT
+ * feature-report transport as the 1421 (opcode in payload byte 0) and collide
+ * numerically with the 1420 freq opcodes above, so they are only ever issued
+ * to a 1425 (via lbe_ops_1425). Arg is payload byte 1. */
+#define LBE_1425_SET_GNSS     0x03  /* GNSS constellation enable bitmask */
+#define LBE_1425_SET_DYNMODEL 0x04  /* u-blox CFG-NAV5 dynamic platform model */
+#define LBE_1425_SET_NMEA     0x0F  /* NMEA output enable (0/1) */
+
+/* LBE-1425 GNSS bitmask bits (LBE_1425_SET_GNSS arg). BeiDou is mutually
+ * exclusive with the GPS/SBAS/Galileo group; GLONASS is unrestricted. */
+#define LBE_1425_GNSS_GPS     0x01
+#define LBE_1425_GNSS_SBAS    0x02
+#define LBE_1425_GNSS_GALILEO 0x04
+#define LBE_1425_GNSS_BEIDOU  0x08
+#define LBE_1425_GNSS_GLONASS 0x40
+
 /* Mini-specific opcodes (differ from 1420/1421 at the same opcode numbers).
  * LBE_MINI_SET_PLL shares its opcode with LBE_1420_SET_F1 but carries a full
  * Si5351C divider-chain program (fin, N3, N2_HS, N2_LS, N1_HS, NC1_LS, NC2_LS,

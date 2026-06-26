@@ -41,15 +41,19 @@ struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 		dev->model = LBE_MINI;
 		dev->ops = &lbe_ops_mini;
 		break;
-	case PID_LBE_1423:
 	case PID_LBE_1425:
+		/* 1425 = the 1421 dual-output protocol plus GNSS / dynamic-model
+		 * / NMEA-output commands (lbe_ops_1425). Per-output frequency
+		 * caps are enforced in lbe_max_freq() via the PID. See
+		 * docs/reverse/LBE-1425-config-v1.10.md. */
+		dev->model = LBE_1421_DUALOUT;
+		dev->ops = &lbe_ops_1425;
+		break;
+	case PID_LBE_1423:
 	case PID_LBE_1421:
 	default:
-		/* 1423 and 1425 share the 1421 CDC+HID wire format (HID
-		 * feature reports for config, NMEA over CDC) until we capture
-		 * evidence of a difference. The 1425's per-output frequency
-		 * caps (OUT1 <= 800 MHz) are not yet enforced -- see
-		 * docs/reverse/LBE-1425-RE-plan.md. */
+		/* 1423 shares the 1421 wire format until we capture evidence
+		 * of a difference. */
 		dev->model = LBE_1421_DUALOUT;
 		dev->ops = &lbe_ops_1421;
 		break;
@@ -119,6 +123,37 @@ int lbe_set_drive_ma(struct lbe_device *dev, unsigned ma) {
 		return -1;
 	}
 	return dev->ops->set_drive_ma(dev->transport, ma);
+}
+
+int lbe_set_gnss(struct lbe_device *dev, uint8_t mask) {
+	if (!dev->ops->set_gnss) {
+		fprintf(stderr, "--gnss is not supported on this model\n");
+		return -1;
+	}
+	/* BeiDou is mutually exclusive with the GPS/SBAS/Galileo group. */
+	uint8_t group = LBE_1425_GNSS_GPS | LBE_1425_GNSS_SBAS | LBE_1425_GNSS_GALILEO;
+	if ((mask & LBE_1425_GNSS_BEIDOU) && (mask & group)) {
+		fprintf(stderr, "Invalid GNSS mask 0x%02X: BeiDou (0x08) cannot be "
+		        "combined with GPS/SBAS/Galileo\n", mask);
+		return -1;
+	}
+	return dev->ops->set_gnss(dev->transport, mask);
+}
+
+int lbe_set_dynmodel(struct lbe_device *dev, uint8_t model) {
+	if (!dev->ops->set_dynmodel) {
+		fprintf(stderr, "--dynmodel is not supported on this model\n");
+		return -1;
+	}
+	return dev->ops->set_dynmodel(dev->transport, model);
+}
+
+int lbe_set_nmea(struct lbe_device *dev, int enable) {
+	if (!dev->ops->set_nmea) {
+		fprintf(stderr, "--nmea is not supported on this model\n");
+		return -1;
+	}
+	return dev->ops->set_nmea(dev->transport, enable);
 }
 
 int lbe_monitor(struct lbe_device *dev) {

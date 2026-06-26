@@ -7,7 +7,7 @@ Cross-platform configuration tool for Leo Bodnar GPS-disciplined clock source de
 | LBE-1420   | 0x2443   | 1       | up to 1600 MHz                         |
 | LBE-1421   | 0x2444   | 2       | up to 1400 MHz, dual-output, NMEA over CDC |
 | LBE-1423   | 0x226f   | 2       | same protocol as 1421                  |
-| LBE-1425   | 0x2269   | 2       | increased stability; OUT1 <=800 MHz +1PPS, OUT2 <=1.4 GHz; 1421 protocol (provisional) |
+| LBE-1425   | 0x2269   | 2       | increased stability; OUT1 <=800 MHz +1PPS, OUT2 <=1.4 GHz; 1421 protocol + GNSS/dyn-model/NMEA controls |
 | LBE-Mini   | 0x2211   | 1       | up to 810 MHz, UBX stream over HID     |
 
 Configures device settings, sets frequencies, and provides a live GPS monitor.
@@ -101,6 +101,9 @@ Options:
   --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)
   --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423 only)
   --drive <8|16|24|32>   Set OUT1 drive strength in mA (Mini only)
+  --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40) (LBE-1425 only)
+  --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
+  --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
   --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423: NMEA via CDC)
@@ -128,6 +131,11 @@ Switch to FLL mode and enable 1PPS on OUT1 (LBE-1421 only):
 Set LBE-Mini drive strength to 24 mA:
 ```
 ./lbe-142x --pid 0x2211 --drive 24
+```
+
+On the LBE-1425, select GPS+GLONASS, a stationary dynamic model, and enable NMEA:
+```
+./lbe-142x --pid 0x2269 --gnss 0x41 --dynmodel stationary --nmea 1
 ```
 
 Live GPS chronometer on LBE-1421 (auto-discovers COM / `/dev/ttyACM*`; `--port` overrides):

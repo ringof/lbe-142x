@@ -62,6 +62,16 @@ int lbe_set_power_level(struct lbe_device* dev, int output, int low_power);
  * unsupported model or invalid value. */
 int lbe_set_drive_ma(struct lbe_device* dev, unsigned ma);
 
+/* LBE-1425 only. Returns -1 on an unsupported model.
+ *  - set_gnss: constellation enable bitmask (LBE_1425_GNSS_* in lbe_common.h);
+ *    rejects masks that combine BeiDou with GPS/SBAS/Galileo.
+ *  - set_dynmodel: u-blox CFG-NAV5 dynamic platform model (0=Portable,
+ *    2=Stationary, 8=Airborne<4g, ...).
+ *  - set_nmea: enable/disable the NMEA output stream. */
+int lbe_set_gnss(struct lbe_device* dev, uint8_t mask);
+int lbe_set_dynmodel(struct lbe_device* dev, uint8_t model);
+int lbe_set_nmea(struct lbe_device* dev, int enable);
+
 /* Blocking live-monitor of the Mini's NAV stream (UTC, lat/lon, altitude,
  * fix type, per-satellite CNR bars). Returns -1 if the model doesn't
  * support monitoring. Otherwise loops until the process is killed. */

@@ -12,7 +12,7 @@
 
 #define MODEL_GENERIC (-1)
 
-void print_usage(int model) {
+void print_usage(int model, int is_1425) {
 	int generic = (model == MODEL_GENERIC);
 	int is_1420 = (model == LBE_1420);
 	int is_mini = (model == LBE_MINI);
@@ -65,6 +65,17 @@ void print_usage(int model) {
 		printf("  --drive <8|16|24|32>   Set OUT1 drive strength in mA%s\n",
 		       generic ? " (Mini only)" : "");
 
+	if (generic || is_1425) {
+		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
+		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40)%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+		printf("  --dynmodel <model>     Set u-blox dynamic model"
+		       " (portable|stationary|pedestrian|automotive|sea|airborne)%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+		printf("  --nmea <0|1>           Enable or disable NMEA output%s\n",
+		       generic ? " (LBE-1425 only)" : "");
+	}
+
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
 	printf("  --status               Display current device status\n");
 
@@ -103,25 +114,26 @@ int main(int argc, char *argv[]) {
 	}
 
 	dev = lbe_open_device(preferred_pid);
+	int is_1425 = dev && lbe_get_pid(dev) == PID_LBE_1425;
 
 	if (help_requested) {
 		/* If a device is attached, show the help tailored to it. Else
 		 * show the generic help covering every supported model. */
-		print_usage(dev ? (int)lbe_get_model(dev) : MODEL_GENERIC);
+		print_usage(dev ? (int)lbe_get_model(dev) : MODEL_GENERIC, is_1425);
 		if (dev) lbe_close_device(dev);
 		return 0;
 	}
 
 	if (!dev) {
 		fprintf(stderr, "\n");
-		print_usage(MODEL_GENERIC);
+		print_usage(MODEL_GENERIC, 0);
 		return 1;
 	}
 
 	model = lbe_get_model(dev);
 
 	if (argc == 1) {
-		print_usage(model);
+		print_usage(model, is_1425);
 		lbe_close_device(dev);
 		return 1;
 	}
@@ -236,6 +248,51 @@ int main(int argc, char *argv[]) {
 					changed = 1;
 				}
 			}
+		} else if (strcmp(argv[i], "--gnss") == 0) {
+			if (i + 1 < argc) {
+				unsigned long m = strtoul(argv[++i], NULL, 0);
+				if (m > 0xFF) {
+					fprintf(stderr, "Invalid GNSS mask: %s (expect 0x00-0xFF)\n", argv[i]);
+				} else if (lbe_set_gnss(dev, (uint8_t)m) == 0) {
+					printf("  Set GNSS mask to 0x%02lX\n", m);
+					changed = 1;
+				}
+			}
+		} else if (strcmp(argv[i], "--dynmodel") == 0) {
+			if (i + 1 < argc) {
+				const char *a = argv[++i];
+				int model = -1;
+				if      (strcmp(a, "portable") == 0)   model = 0;
+				else if (strcmp(a, "stationary") == 0) model = 2;
+				else if (strcmp(a, "pedestrian") == 0) model = 3;
+				else if (strcmp(a, "automotive") == 0) model = 4;
+				else if (strcmp(a, "sea") == 0)        model = 5;
+				else if (strcmp(a, "airborne") == 0)   model = 8;
+				else {
+					char *end;
+					unsigned long v = strtoul(a, &end, 0);
+					if (*end == '\0' && v <= 0xFF) model = (int)v;
+				}
+				if (model < 0) {
+					fprintf(stderr, "Invalid dynamic model: %s (portable|stationary|"
+					        "pedestrian|automotive|sea|airborne or a u-blox value)\n", a);
+				} else if (lbe_set_dynmodel(dev, (uint8_t)model) == 0) {
+					printf("  Set dynamic model to %d\n", model);
+					changed = 1;
+				}
+			}
+		} else if (strcmp(argv[i], "--nmea") == 0) {
+			if (i + 1 < argc) {
+				int enable = atoi(argv[++i]);
+				if (enable == 0 || enable == 1) {
+					if (lbe_set_nmea(dev, enable) == 0) {
+						printf("  Set NMEA output %s\n", enable ? "enabled" : "disabled");
+						changed = 1;
+					}
+				} else {
+					fprintf(stderr, "Invalid NMEA state: %d\n", enable);
+				}
+			}
 		} else if (strcmp(argv[i], "--blink") == 0) {
 			if (lbe_blink_leds(dev) == 0) {
 				printf("  Blink LED(s)\n");
@@ -301,7 +358,7 @@ int main(int argc, char *argv[]) {
 			i++;  /* consumed in the pre-scan above */
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[i]);
-			print_usage(model);
+			print_usage(model, is_1425);
 		}
 	}
 

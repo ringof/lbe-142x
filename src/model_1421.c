@@ -109,6 +109,25 @@ static int m1421_set_power_level(struct lbe_transport *t, int output, int low) {
 	return send_cmd(t, opcode, &arg, 1, 1);
 }
 
+/* --- LBE-1425-only commands ---------------------------------------------
+ * Same SET_REPORT feature-report transport as the rest of the 1421 family
+ * (opcode in payload byte 0, arg in byte 1). Confirmed against a vendor-tool
+ * USB capture; see docs/reverse/LBE-1425-config-v1.10.md. Wired into
+ * lbe_ops_1425 only, so 1421/1423 never emit these opcodes (which would mean
+ * something else on those models). */
+static int m1425_set_gnss(struct lbe_transport *t, uint8_t mask) {
+	return send_cmd(t, LBE_1425_SET_GNSS, &mask, 1, 1);
+}
+
+static int m1425_set_dynmodel(struct lbe_transport *t, uint8_t model) {
+	return send_cmd(t, LBE_1425_SET_DYNMODEL, &model, 1, 1);
+}
+
+static int m1425_set_nmea(struct lbe_transport *t, int enable) {
+	uint8_t arg = enable ? 0x01 : 0x00;
+	return send_cmd(t, LBE_1425_SET_NMEA, &arg, 1, 1);
+}
+
 /* Live chronometer-style NMEA + 1PPS monitor. The 1421 streams GPS
  * data over USB CDC (not HID) and drives the u-blox 1PPS onto the
  * CDC DCD line. Port selection: LBE_PORT env var first, else first
@@ -271,4 +290,25 @@ const struct lbe_model_ops lbe_ops_1421 = {
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
 	.monitor            = m1421_monitor,
+};
+
+/* LBE-1425: the 1421 dual-output protocol verbatim, plus the 1425's extra
+ * GNSS / dynamic-model / NMEA-output commands. (Per-output frequency caps
+ * are enforced separately in lbe_device.c via the PID.) */
+const struct lbe_model_ops lbe_ops_1425 = {
+	.name               = "1425 dual output",
+	.max_freq           = LBE_1425_OUT2_MAX_FREQ,
+	.init               = NULL,
+	.get_status         = m1421_get_status,
+	.set_frequency      = m1421_set_frequency,
+	.set_frequency_temp = m1421_set_frequency_temp,
+	.set_outputs_enable = m1421_set_outputs_enable,
+	.blink_leds         = m1421_blink_leds,
+	.set_pll_mode       = m1421_set_pll_mode,
+	.set_1pps           = m1421_set_1pps,
+	.set_power_level    = m1421_set_power_level,
+	.monitor            = m1421_monitor,
+	.set_gnss           = m1425_set_gnss,
+	.set_dynmodel       = m1425_set_dynmodel,
+	.set_nmea           = m1425_set_nmea,
 };
