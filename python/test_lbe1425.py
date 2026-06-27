@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2024-2026 Benjamin Vernoux
 #
-# Integration test for the LBE-1425 CLI. Exercises every command with a range
-# of reasonable values and checks for bugs in two ways:
+# Integration test for the LBE-1425 CLI. Exercises every command we'd
+# reasonably send and checks for bugs several ways:
 #
-#   1. round-trip  -- set a value, read it back via --status, assert it matches
-#                     (frequency, outputs, PLL/FLL, PPS, power level)
-#   2. accept/reject -- valid inputs are accepted, invalid ones are rejected
-#                     (frequency caps, bad enums, GNSS/dynmodel/NMEA, the
-#                      BeiDou-vs-GPS/SBAS/Gal constraint)
-#   3. opcode capture (optional, --usbmon) -- snoop the usbmon stream and assert
-#                     the exact opcode/argument each command emits; this is the
-#                     only way to verify the write-only commands (GNSS/dynmodel/
-#                     NMEA) that --status doesn't echo.
+#   1. round-trip  -- set a value, read it back via --status, assert it matches:
+#                     frequency, outputs, PLL/FLL, PPS, power, and (since the
+#                     1425 echoes them) the GNSS mask, dynamic model and NMEA.
+#   2. status content -- serial present, antenna line well-formed.
+#   3. read + live -- --blink, --gps-info (u-blox version), --probe-op, and a
+#                     smoke test of the never-returning live modes (--statlog,
+#                     --diag, --monitor) that they start rendering.
+#   4. accept/reject -- valid inputs accepted, invalid rejected (frequency caps,
+#                     bad enums, the BeiDou-vs-GPS/SBAS/Gal constraint).
+#   5. opcode capture (optional, --usbmon) -- snoop usbmon and assert the exact
+#                     opcode/argument each command puts on the wire.
 #
 # The device is left at the vendor factory defaults when the run finishes.
 #
@@ -84,6 +86,12 @@ STATUS_FIELDS = {
     "outputs":    (r"Output\(s\) Enabled:\s*(\w+)", str),
     "pps":        (r"1PPS on OUT1:\s*(\w+)", str),
     "mode":       (r"Mode:\s*(\w+)", str),
+    # 1425-specific status lines (config echoed back in the report tail)
+    "gnss_mask":  (r"GNSS:\s*(0x[0-9A-Fa-f]+)", lambda x: int(x, 16)),
+    "dynmodel":   (r"Dynamic model:.*\((\d+)\)", int),
+    "nmea":       (r"NMEA output:\s*(\w+)", str),
+    "serial":     (r"Serial:\s*(\S+)", str),
+    "antenna":    (r"Antenna:\s*(.+)", str),
 }
 
 
@@ -208,6 +216,69 @@ def test_roundtrip(binp, t):
         run_cli(binp, "--pps", val)
         t.check(f"--pps {val} -> pps {want}", get_status(binp).get("pps") == want)
 
+    # 1425 config the status report echoes back (GNSS mask / dynModel / NMEA).
+    for mask in [0x47, 0x01, 0x40, 0x21, 0x48]:
+        run_cli(binp, "--gnss", f"0x{mask:02X}")
+        got = get_status(binp).get("gnss_mask")
+        t.check(f"--gnss 0x{mask:02X} -> status GNSS 0x{(got or 0):02X}", got == mask)
+
+    for name, val in [("portable", 0), ("stationary", 2), ("pedestrian", 3),
+                      ("automotive", 4), ("airborne", 8)]:
+        run_cli(binp, "--dynmodel", name)
+        got = get_status(binp).get("dynmodel")
+        t.check(f"--dynmodel {name} -> status dynModel {got}", got == val)
+
+    for val, want in [("0", "Disabled"), ("1", "Enabled")]:
+        run_cli(binp, "--nmea", val)
+        t.check(f"--nmea {val} -> NMEA {want}", get_status(binp).get("nmea") == want)
+
+
+def test_status_content(binp, t):
+    """The 1425 --status should carry a serial and a parseable antenna line."""
+    print("\n-- status content --")
+    st = get_status(binp)
+    t.check("serial present", bool(st.get("serial")), f"got {st.get('serial')!r}")
+    ant = st.get("antenna", "")
+    ok = bool(re.match(r"(OK \(\d+ mA\)|Not connected \(0 mA\)|Short Circuit)", ant))
+    t.check(f"antenna line well-formed: {ant!r}", ok)
+
+
+def run_timed(binp, args, seconds):
+    """Launch the binary directly (script already runs as root), let it run for
+    `seconds`, then stop it and return whatever it printed. For the
+    never-returning live modes (--diag/--monitor/--statlog)."""
+    p = subprocess.Popen([binp, "--pid", PID, *args],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    time.sleep(seconds)
+    p.terminate()
+    try:
+        out, _ = p.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, _ = p.communicate()
+    return out
+
+
+def test_read_and_live(binp, t):
+    print("\n-- read + live commands --")
+    # one-shot reads
+    _, out = run_cli(binp, "--blink")
+    t.check("--blink runs", "Blink" in out, out.strip()[-80:])
+    _, out = run_cli(binp, "--gps-info", timeout=15)
+    t.check("--gps-info returns u-blox version", "SW version" in out, out.strip()[-80:])
+    _, out = run_cli(binp, "--probe-op", "0x07", "01")
+    t.check("--probe-op runs (0x07 -> no status change)",
+            "no status change" in out or "byte" in out, out.strip()[-80:])
+
+    # never-returning live modes: smoke-test that each starts producing output
+    out = run_timed(binp, ["--statlog"], 3)
+    t.check("--statlog produces rows", "bytes[18..40]" in out or "0x" in out, out.strip()[-80:])
+    out = run_timed(binp, ["--diag"], 5)
+    t.check("--diag renders", "GPS Diagnostics" in out, out.strip()[-80:])
+    out = run_timed(binp, ["--monitor"], 5)
+    t.check("--monitor renders (needs /dev/ttyACM*)",
+            "GPS Monitor" in out, out.strip()[-120:])
+
 
 def is_rejected(out):
     return bool(re.search(r"Invalid|not supported|cannot be combined|does not support", out))
@@ -301,12 +372,13 @@ def restore_defaults(binp):
 def self_test():
     """Validate the parsers without a device."""
     t = Tally()
-    sample = """lbe-142x v1.2 ...
+    sample = """lbe-142x v1.3 ...
 Connected to LBE-1425 dual output
+  Serial: 0C7BB80E70E5
 Device Status (0xEE):
   GPS Lock: No
   PLL Lock: Yes
-  Antenna: OK
+  Antenna: OK (5 mA)
   Output(s) Enabled: Yes
   OUT1 Frequency: 10000000 Hz
   OUT1 Power Level: Normal
@@ -314,6 +386,9 @@ Device Status (0xEE):
   OUT2 Power Level: Low
   1PPS on OUT1: Enabled
   Mode: FLL
+  GNSS: 0x47 (GPS SBAS Galileo GLONASS)
+  Dynamic model: Stationary (2)
+  NMEA output: Enabled
 """
     st = parse_status(sample)
     t.check("status raw 0xEE", st.get("raw") == 0xEE)
@@ -323,6 +398,11 @@ Device Status (0xEE):
     t.check("outputs Yes", st.get("outputs") == "Yes")
     t.check("pps Enabled", st.get("pps") == "Enabled")
     t.check("mode FLL", st.get("mode") == "FLL")
+    t.check("serial parsed", st.get("serial") == "0C7BB80E70E5")
+    t.check("antenna parsed", st.get("antenna") == "OK (5 mA)")
+    t.check("gnss_mask 0x47", st.get("gnss_mask") == 0x47)
+    t.check("dynmodel 2", st.get("dynmodel") == 2)
+    t.check("nmea Enabled", st.get("nmea") == "Enabled")
     t.check("reject detects Invalid", is_rejected("Invalid frequency: 900000000"))
     t.check("reject detects constraint", is_rejected("BeiDou (0x08) cannot be combined"))
     t.check("accept passes clean", not is_rejected("  Set GNSS mask to 0x41"))
@@ -373,7 +453,9 @@ def main():
 
     try:
         test_roundtrip(args.bin, t)
+        test_status_content(args.bin, t)
         test_accept_reject(args.bin, t)
+        test_read_and_live(args.bin, t)
         if watcher:
             test_opcodes(args.bin, t, watcher)
     finally:

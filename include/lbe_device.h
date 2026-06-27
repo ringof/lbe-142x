@@ -6,6 +6,7 @@
 #define LBE_DEVICE_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 struct lbe_device;
 
@@ -26,12 +27,20 @@ struct lbe_status {
     int pps_enabled;
     int out1_power_low;
     int out2_power_low;
+    /* LBE-1425: measured antenna bias current in mA (status report byte 23).
+     * 0 = no antenna / open; a few..tens mA = a healthy active antenna; an
+     * over-current short instead clears the antenna_ok bit. 0 on other models. */
+    uint8_t antenna_current_ma;
     /* Mini only: actual output drive strength in mA (8/16/24/32).
      * 0 for other models which use the out1_power_low bool instead. */
     uint8_t out1_drive_ma;
     /* Mini only: firmware's running "Signal loss count" (what the vendor
      * GUI shows). 0 for other models. */
     uint8_t signal_loss_count;
+    /* Raw status feature report as read off the wire (for inspecting bytes
+     * the decoder doesn't interpret, e.g. the 1421/1425 tail at offset 21).
+     * Filled by models that read a fixed-size report; zero otherwise. */
+    uint8_t raw[64];
 };
 
 /* Open an LBE device. Pass preferred_pid=0 to auto-select the only
@@ -43,6 +52,16 @@ enum lbe_model lbe_get_model(struct lbe_device* dev);
 /* The exact USB product id the device enumerated with. Lets callers
  * distinguish models that share an ops vtable (1421/1423/1425). */
 uint16_t lbe_get_pid(struct lbe_device* dev);
+
+/* Copy the device's USB serial number (NUL-terminated) into out. Returns 0 if
+ * a serial was available, -1 otherwise (out is set empty). */
+int lbe_get_serial(struct lbe_device* dev, char* out, size_t n);
+
+/* Reverse-engineering helper: send an arbitrary feature-report command
+ * (opcode in byte 0, payload from byte 1). For probing untested opcodes on the
+ * 1420/1421-family wire format. Returns 0 on success. */
+int lbe_send_raw(struct lbe_device* dev, uint8_t opcode,
+                 const uint8_t* payload, size_t n);
 
 /* Maximum settable frequency in Hz for the given output (1 or 2). Most
  * models are symmetric, but the LBE-1425 caps OUT1 at 800 MHz while OUT2

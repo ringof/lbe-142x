@@ -35,7 +35,7 @@ struct lbe_model_ops {
 	int (*set_drive_ma)(struct lbe_transport *t, unsigned ma);
 
 	/* Interactive GPS monitor (Ctrl-C to exit). Mini parses UBX from HID;
-	 * 1421/1423 parse NMEA from the CDC port. NULL means "unsupported". */
+	 * 1421/1423/1425 parse NMEA from the CDC port. NULL means "unsupported". */
 	int (*monitor)(struct lbe_transport *t);
 
 	/* One-shot UBX-MON-VER poll (u-blox SW/HW version strings). Mini

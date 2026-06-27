@@ -9,15 +9,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define MODEL_GENERIC (-1)
+
+/* Friendly name for the status-report bytes the decoder understands, used by
+ * --probe-op to annotate which field an opcode touched. NULL if unknown. */
+static const char *status_byte_name(int off) {
+	switch (off) {
+	case 1:  return "status bits";
+	case 6: case 7: case 8: case 9:     return "OUT1 frequency";
+	case 14: case 15: case 16: case 17: return "OUT2 frequency";
+	case 18: return "PLL/FLL mode";
+	case 19: return "OUT1 power";
+	case 20: return "OUT2 power";
+	case 21: return "GNSS mask";
+	case 22: return "dynModel";
+	case 23: return "antenna mA";
+	case 24: return "NMEA enable";
+	default: return NULL;
+	}
+}
 
 void print_usage(int model, int is_1425) {
 	int generic = (model == MODEL_GENERIC);
 	int is_1420 = (model == LBE_1420);
 	int is_mini = (model == LBE_MINI);
 	int is_1421 = (model == LBE_1421_DUALOUT);
+	/* OUT1 cap. The 1425 caps OUT1 at 800 MHz (its 1PPS output) -- the rest
+	 * of the 1421 family go to 1.4 GHz. */
 	unsigned long mf =
+		is_1425 ? LBE_1425_OUT1_MAX_FREQ :
 		is_1420 ? LBE_1420_MAX_FREQ :
 		is_mini ? LBE_MINI_MAX_FREQ :
 		          LBE_1421_MAX_FREQ;
@@ -29,8 +51,8 @@ void print_usage(int model, int is_1425) {
 	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)\n");
 
 	if (generic)
-		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421 <=%lu, Mini <=%lu)\n",
-		       LBE_1420_MAX_FREQ, LBE_1421_MAX_FREQ, LBE_MINI_MAX_FREQ);
+		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421/1423 <=%lu, 1425 OUT1 <=%lu, Mini <=%lu)\n",
+		       LBE_1420_MAX_FREQ, LBE_1421_MAX_FREQ, LBE_1425_OUT1_MAX_FREQ, LBE_MINI_MAX_FREQ);
 	else
 		printf("  --f1 <Hz>              Set OUT1 frequency (1-%lu Hz), save to flash\n", mf);
 
@@ -40,9 +62,9 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1421) {
 		printf("  --f2 <Hz>              Set OUT2 frequency, save to flash%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 		printf("  --f2t <Hz>             Set OUT2 temporary frequency%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
 
 	printf("  --out <0|1>            Enable or disable outputs\n");
@@ -53,13 +75,13 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1421)
 		printf("  --pps <0|1>            Enable or disable 1PPS on OUT1%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 
 	printf("  --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)\n");
 
 	if (generic || is_1421)
 		printf("  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1)%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 
 	if (generic || is_mini)
 		printf("  --drive <8|16|24|32>   Set OUT1 drive strength in mA%s\n",
@@ -67,7 +89,7 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1425) {
 		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
-		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40)%s\n",
+		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --dynmodel <model>     Set u-blox dynamic model"
 		       " (portable|stationary|pedestrian|automotive|sea|airborne)%s\n",
@@ -81,6 +103,14 @@ void print_usage(int model, int is_1425) {
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
 	printf("  --status               Display current device status\n");
 
+	if (generic || is_1421)
+		printf("  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
+		       generic ? " (LBE-142x)" : "");
+
+	if (generic || is_1421)
+		printf("  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)%s\n",
+		       generic ? " (LBE-142x)" : "");
+
 	if (generic || is_mini || is_1421) {
 		printf("  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
 		       generic ? " (Mini: UBX; 1421/1423/1425: NMEA via CDC)" : "");
@@ -89,9 +119,9 @@ void print_usage(int model, int is_1425) {
 		printf("  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
 		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
-	if (generic || is_mini) {
-		printf("  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER)%s\n",
-		       generic ? " (Mini only)" : "");
+	if (generic || is_mini || is_1425) {
+		printf("  --gps-info             Print u-blox GPS module version + antenna status%s\n",
+		       generic ? " (Mini / LBE-1425)" : "");
 	}
 }
 
@@ -211,7 +241,7 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(argv[i], "--pps") == 0) {
 			if (model != LBE_1421_DUALOUT) {
-				fprintf(stderr, "1PPS on OUT1 control is only supported on LBE-1421\n");
+				fprintf(stderr, "1PPS on OUT1 control is only supported on LBE-1421/1423/1425\n");
 				continue;
 			}
 			if (i + 1 < argc) {
@@ -263,23 +293,23 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(argv[i], "--dynmodel") == 0) {
 			if (i + 1 < argc) {
 				const char *a = argv[++i];
-				int model = -1;
-				if      (strcmp(a, "portable") == 0)   model = 0;
-				else if (strcmp(a, "stationary") == 0) model = 2;
-				else if (strcmp(a, "pedestrian") == 0) model = 3;
-				else if (strcmp(a, "automotive") == 0) model = 4;
-				else if (strcmp(a, "sea") == 0)        model = 5;
-				else if (strcmp(a, "airborne") == 0)   model = 8;
+				int dynmodel = -1;
+				if      (strcmp(a, "portable") == 0)   dynmodel = 0;
+				else if (strcmp(a, "stationary") == 0) dynmodel = 2;
+				else if (strcmp(a, "pedestrian") == 0) dynmodel = 3;
+				else if (strcmp(a, "automotive") == 0) dynmodel = 4;
+				else if (strcmp(a, "sea") == 0)        dynmodel = 5;
+				else if (strcmp(a, "airborne") == 0)   dynmodel = 8;
 				else {
 					char *end;
 					unsigned long v = strtoul(a, &end, 0);
-					if (*end == '\0' && v <= 0xFF) model = (int)v;
+					if (*end == '\0' && v <= 0xFF) dynmodel = (int)v;
 				}
-				if (model < 0) {
+				if (dynmodel < 0) {
 					fprintf(stderr, "Invalid dynamic model: %s (portable|stationary|"
 					        "pedestrian|automotive|sea|airborne or a u-blox value)\n", a);
-				} else if (lbe_set_dynmodel(dev, (uint8_t)model) == 0) {
-					printf("  Set dynamic model to %d\n", model);
+				} else if (lbe_set_dynmodel(dev, (uint8_t)dynmodel) == 0) {
+					printf("  Set dynamic model to %d\n", dynmodel);
 					changed = 1;
 				}
 			}
@@ -301,14 +331,32 @@ int main(int argc, char *argv[]) {
 				changed = 1;
 			}
 		} else if (strcmp(argv[i], "--status") == 0) {
-			if (lbe_get_device_status(dev, &status) == 0) {
+			if (lbe_get_device_status(dev, &status) != 0) {
+				fprintf(stderr, "Status read failed (device busy or "
+				                "transient fault -- try again)\n");
+			} else {
+				char serial[64];
+				if (lbe_get_serial(dev, serial, sizeof serial) == 0)
+					printf("  Serial: %s\n", serial);
 				printf("Device Status (0x%02X):\n", status.raw_status);
 				printf("  GPS Lock: %s\n", (status.raw_status & LBE_GPS_LOCK_BIT) ? "Yes" : "No");
 				printf("  PLL Lock: %s\n", status.pll_locked ? "Yes" : "No");
 				/* Antenna status is not decodable on the Mini feature
 				 * report -- the vendor UI does not expose it either. */
 				if (model != LBE_MINI) {
-					printf("  Antenna: %s\n", status.antenna_ok ? "OK" : "Short Circuit");
+					if (!status.antenna_ok) {
+						printf("  Antenna: Short Circuit\n");
+					} else if (lbe_get_pid(dev) == PID_LBE_1425) {
+						/* The 1425 reports antenna bias current, so we can tell
+						 * "no antenna" (0 mA) from a healthy one -- the bit alone
+						 * only flags a short. */
+						if (status.antenna_current_ma == 0)
+							printf("  Antenna: Not connected (0 mA)\n");
+						else
+							printf("  Antenna: OK (%u mA)\n", status.antenna_current_ma);
+					} else {
+						printf("  Antenna: OK\n");
+					}
 				}
 				printf("  Output(s) Enabled: %s\n", status.outputs_enabled ? "Yes" : "No");
 				printf("  OUT1 Frequency: %u Hz\n", status.frequency1);
@@ -329,7 +377,115 @@ int main(int argc, char *argv[]) {
 				if (model != LBE_MINI) {
 					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
 				}
+				/* 1425 echoes the GNSS mask (byte 21) and dynamic model
+				 * (byte 22) in its status report -- show the live config. */
+				if (lbe_get_pid(dev) == PID_LBE_1425) {
+					static const struct { uint8_t bit; const char *name; } gn[] = {
+						{LBE_1425_GNSS_GPS, "GPS"}, {LBE_1425_GNSS_SBAS, "SBAS"},
+						{LBE_1425_GNSS_GALILEO, "Galileo"}, {LBE_1425_GNSS_BEIDOU, "BeiDou"},
+						{LBE_1425_GNSS_IMES, "IMES"}, {LBE_1425_GNSS_QZSS, "QZSS"},
+						{LBE_1425_GNSS_GLONASS, "GLONASS"},
+					};
+					uint8_t mask = status.raw[21];
+					printf("  GNSS: 0x%02X (", mask);
+					int first = 1;
+					for (size_t g = 0; g < sizeof gn / sizeof gn[0]; g++)
+						if (mask & gn[g].bit) {
+							printf("%s%s", first ? "" : " ", gn[g].name);
+							first = 0;
+						}
+					printf("%s)\n", first ? "none" : "");
+					const char *dm;
+					switch (status.raw[22]) {
+					case 0:  dm = "Portable"; break;
+					case 2:  dm = "Stationary"; break;
+					case 3:  dm = "Pedestrian"; break;
+					case 4:  dm = "Automotive"; break;
+					case 5:  dm = "Sea"; break;
+					case 6:  dm = "Airborne<1g"; break;
+					case 7:  dm = "Airborne<2g"; break;
+					case 8:  dm = "Airborne<4g"; break;
+					default: dm = "?"; break;
+					}
+					printf("  Dynamic model: %s (%u)\n", dm, status.raw[22]);
+					printf("  NMEA output: %s\n",
+					       status.raw[24] ? "Enabled" : "Disabled");
+				}
 			}
+		} else if (strcmp(argv[i], "--statlog") == 0) {
+			/* Poll the status report ~1 Hz and print the lock state plus the
+			 * raw report tail (bytes the decoder ignores, e.g. offset 21 on
+			 * the 1421/1425). For studying how the tail moves through
+			 * acquiring->locked and over time (temperature/voltage?). */
+			printf("time      raw  GPS PLL ANT | bytes[18..40]   (Ctrl-C to stop)\n");
+			for (;;) {
+				if (lbe_get_device_status(dev, &status) == 0) {
+					time_t now = time(NULL);
+					struct tm *lt = localtime(&now);
+					char ts[16];
+					strftime(ts, sizeof ts, "%H:%M:%S", lt);
+					printf("%s  0x%02X  %d   %d   %d  |", ts, status.raw_status,
+					       !!(status.raw_status & LBE_GPS_LOCK_BIT),
+					       status.pll_locked, status.antenna_ok);
+					for (int b = 18; b <= 40; b++) printf(" %02X", status.raw[b]);
+					printf("\n");
+					fflush(stdout);
+				}
+				lbe_sleep_ms(1000);
+			}
+			/* never reached: --statlog loops until Ctrl-C */
+		} else if (strcmp(argv[i], "--probe-op") == 0) {
+			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
+			 * and report which status-report bytes it changed. */
+			if (model != LBE_1421_DUALOUT) {
+				fprintf(stderr, "--probe-op needs the 1421-family status report\n");
+				continue;
+			}
+			if (i + 1 >= argc) {
+				fprintf(stderr, "usage: --probe-op <0xNN> [b1 b2 ...]\n");
+				continue;
+			}
+			uint8_t op = (uint8_t)strtoul(argv[++i], NULL, 0);
+			uint8_t payload[59];
+			size_t pn = 0;
+			while (i + 1 < argc && pn < sizeof payload) {
+				char *end;
+				unsigned long v = strtoul(argv[i + 1], &end, 0);
+				if (argv[i + 1][0] == '\0' || *end != '\0' || v > 0xFF) break;
+				payload[pn++] = (uint8_t)v;
+				i++;
+			}
+			struct lbe_status before, after;
+			if (lbe_get_device_status(dev, &before) != 0) {
+				fprintf(stderr, "  baseline status read failed\n");
+				continue;
+			}
+			printf("Probing opcode 0x%02X", op);
+			for (size_t k = 0; k < pn; k++) printf(" %02X", payload[k]);
+			printf(" ...\n");
+			if (lbe_send_raw(dev, op, payload, pn) != 0) {
+				fprintf(stderr, "  send failed\n");
+				continue;
+			}
+			lbe_sleep_ms(50);
+			if (lbe_get_device_status(dev, &after) != 0) {
+				fprintf(stderr, "  follow-up status read failed\n");
+				continue;
+			}
+			int any = 0;
+			for (int b = 0; b < 60; b++) {
+				if (before.raw[b] == after.raw[b]) continue;
+				const char *nm = status_byte_name(b);
+				if (nm)
+					printf("  byte %2d: 0x%02X -> 0x%02X  (%s)\n",
+					       b, before.raw[b], after.raw[b], nm);
+				else
+					printf("  byte %2d: 0x%02X -> 0x%02X\n",
+					       b, before.raw[b], after.raw[b]);
+				any = 1;
+			}
+			if (!any) printf("  no status change\n");
+			changed = 1;
 		} else if (strcmp(argv[i], "--monitor") == 0) {
 			/* Let the shared monitor impl render the real model in its
 			 * title (1421/1423/1425 share one monitor function). */

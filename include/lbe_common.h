@@ -55,6 +55,8 @@
 #define LBE_1425_GNSS_SBAS    0x02
 #define LBE_1425_GNSS_GALILEO 0x04
 #define LBE_1425_GNSS_BEIDOU  0x08
+#define LBE_1425_GNSS_IMES    0x10  /* mask bit = 1 << u-blox gnssId */
+#define LBE_1425_GNSS_QZSS    0x20  /* confirmed via CFG-GNSS readback */
 #define LBE_1425_GNSS_GLONASS 0x40
 
 /* Mini-specific opcodes (differ from 1420/1421 at the same opcode numbers).

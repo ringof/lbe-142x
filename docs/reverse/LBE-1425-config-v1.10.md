@@ -63,23 +63,37 @@ The vendor UI exposes three; the field accepts the full u-blox enum:
 
 ### `0x03` SET_GNSS bitmask (payload byte 1)
 
+The mask is `bit = 1 << u-blox gnssId`:
+
 | bit | mask | constellation |
 |-----|------|---------------|
 | 0   | 0x01 | GPS           |
 | 1   | 0x02 | SBAS          |
 | 2   | 0x04 | Galileo       |
 | 3   | 0x08 | BeiDou        |
+| 4   | 0x10 | IMES          |
+| 5   | 0x20 | QZSS          |
 | 6   | 0x40 | GLONASS       |
 
-Bits 4/5 (0x10/0x20) likely QZSS/IMES — not toggled in the capture, unconfirmed.
-e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x00` = all off. Decoded from a live
-off-one-at-a-time / on-in-reverse sweep of the vendor UI's constellation checkboxes.
+GPS/SBAS/Gal/BeiDou/GLONASS decoded from the vendor UI sweep; **QZSS (0x20)
+confirmed** by setting `--gnss 0x67` vs `0x47` and reading back UBX-CFG-GNSS
+(QZSS appears/disappears accordingly) — even though the vendor UI has no QZSS
+control. IMES (0x10) follows the same `1<<gnssId` mapping (not separately
+exercised). e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x67` adds QZSS.
 
 **Valid-mask constraint** (u-blox concurrent-GNSS rule, enforced by the UI/firmware):
 the GPS/SBAS/Galileo group (`0x01|0x02|0x04`) is **mutually exclusive** with
 BeiDou (`0x08`) — you get one group or the other, not both. GLONASS (`0x40`) may
 be combined with either, with no restriction. A `--gnss` CLI flag should reject
 masks that set BeiDou together with any of GPS/SBAS/Galileo.
+
+**Opcode space mapped.** Every documented opcode `0x01`-`0x0F` is accounted for
+above. The LBE-1420-only `0x07` (SET_PWR1) is **ignored** on the 1425 (no
+status change for either arg). A sweep of `0x10`-`0x2F` via `--probe-op` (send
+opcode, diff the full status report) produced **no status change** for any --
+so there are no undocumented status-affecting opcodes. (Caveat: `--probe-op`
+only observes status-echoed effects; a purely physical/GPS-side opcode would not
+show, but the one such channel, the `0x08` UBX wrap, is already known.)
 
 `0x08` is issued repeatedly by the GUI (3 distinct sub-selectors cycling) and is
 almost certainly how the vendor app reads the extended "increased stability"
@@ -104,13 +118,32 @@ Same layout as the 1421 status report for the documented fields:
 | 18     | FLL mode        | 0               |
 | 19     | OUT1 power low  | 0               |
 | 20     | OUT2 power low  | 0               |
-| **21** | **extra**       | `67 02 05 00`   |
+| 21     | GNSS mask       | tracks `--gnss` |
+| 22     | dynModel        | `0x02` Stationary |
+| 23     | antenna current | mA (see below)  |
+| 24     | NMEA output enable | `0x00`/`0x01` |
 | 25..   | padding         | `FF…`           |
 
-Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). Bytes
-**21-24 (`67 02 05 00`)** are new vs the 1421 and unexplained — candidate
-"increased stability" telemetry (fw version / holdover metric / temperature).
-Constant in this capture; needs captures across state changes to decode.
+Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). The tail
+bytes (21-24), once thought to be opaque telemetry, decode by watching them live
+(`--statlog`):
+
+- **byte 21 = GNSS constellation mask** — directly confirmed by sweeping
+  `--gnss` (0x01→GPS, 0x40→GLONASS, 0x21→GPS+QZSS, 0x47→…), reads back exactly.
+- **byte 22 = u-blox dynamic model** — directly confirmed by sweeping
+  `--dynmodel` (0=Portable, 2=Stationary, 3=Pedestrian, 4=Automotive, 8=Airborne).
+  Both are shown in `--status` (`GNSS:` / `Dynamic model:` lines).
+- **byte 23 = measured antenna bias current (mA).** 0 with no antenna; ~5 mA on
+  one patch, ~11–12 mA (jittering ±1, ADC noise) on another. This gives true
+  antenna-presence detection the single ANT *short* bit can't: 0 = open/none,
+  nonzero = connected, short = ANT bit clears. Surfaced in `--status` as
+  `Antenna: Not connected (0 mA)` / `OK (N mA)` / `Short Circuit`.
+- **byte 24 = NMEA output enable** — confirmed by toggling `--nmea` (`0`→`0x00`,
+  `1`→`0x01`). The `0x00` in the original vendor capture was just NMEA off.
+
+The full tail is decoded: it's a live config + status echo {GNSS mask, dynModel,
+antenna current, NMEA enable}, not the opaque telemetry first assumed. `--status`
+surfaces all of it on the 1425.
 
 ## Diagnostics channel: UBX over EP 0x83 (confirmed)
 
@@ -144,6 +177,29 @@ confirms `--gnss`→CFG-GNSS and `--dynmodel`→CFG-NAV5 from the GPS side.
 (NAV-PVT/SAT/CLOCK + ACK-ACK, all decoded) and ~22% are `0xFF` inter-message
 padding (correctly skipped on resync); the remainder is a negligible
 frame-boundary fragment. No hidden or unhandled message types.
+
+## GNSS module (UBX-MON-VER, via --gps-info)
+
+The 1425 forwards UBX polls/`CFG-MSG` to its GNSS module, so `--gps-info` reads:
+
+```
+SW: ROM CORE 3.01 (107888)   HW: 00080000   FWVER=SPG 3.01   PROTVER=18.00
+GPS;GLO;GAL;BDS  SBAS;IMES;QZSS
+```
+
+→ a **u-blox M8** (HW `0x00080000`), ROM-based (NEO-M8N/M8M-class), Standard
+Precision GNSS firmware (not the M8T timing variant), protocol 18.00. This
+explains the GNSS behaviour: the BeiDou-vs-GPS/SBAS/Galileo exclusion is the M8
+3-concurrent-GNSS limitation, and NAV-SAT / 92-byte NAV-PVT are protocol-15+.
+
+**Antenna status:** `UBX-MON-HW` reports `antStatus = DONTKNOW` — the board does
+not wire the antenna to the u-blox supervisor, so MON-HW is a dead end. But the
+LBE MCU measures the antenna **bias current** itself and reports it in the status
+feature report at **byte 23** (mA) -- see the status-read section. That gives
+real presence detection (0 mA = open/none, nonzero = connected, over-current
+short clears the ANT bit), which is what `--status` now uses. So accurate
+antenna state *is* obtainable in software after all -- just from the LBE report,
+not from the u-blox.
 
 ## Factory reset
 
