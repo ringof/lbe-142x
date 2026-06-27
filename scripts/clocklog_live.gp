@@ -6,10 +6,11 @@
 #   gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp    # ASCII / SSH
 #
 # Options (gnuplot -e "name=value; ..."):
-#   csv      path to the growing CSV            (default "run.csv")
-#   window   sliding window width, seconds      (default 120)
-#   refresh  redraw period, seconds             (default 1)
-#   dumb     if set, render ASCII in-terminal (no X needed)
+#   csv       path to the growing CSV           (default "run.csv")
+#   window    sliding window width, seconds     (default 120)
+#   fromstart if set, show the whole run from the first sample (ignores window)
+#   refresh   redraw period, seconds            (default 1)
+#   dumb      if set, render ASCII in-terminal (no X needed)
 #
 # Honesty rules are identical to clocklog_plot.gp: iTOW x-axis, untrusted
 # samples greyed, gaps flagged red and never interpolated, sentinels dropped.
@@ -54,7 +55,10 @@ while (1) {
 	stats csv using 1 nooutput
 	if (exists("STATS_records") && STATS_records >= 2) {
 		xhi = STATS_max
-		set xrange [xhi - window : xhi]
+		# fromstart: anchor the left edge at the first sample (whole run grows
+		# rightward). Otherwise slide a `window`-second window with the data.
+		if (exists("fromstart")) { xlo = STATS_min } else { xlo = xhi - window }
+		set xrange [xlo : xhi]
 		plot \
 		  csv using 1:($9==0 && $8==1 && $4>=0 ? $4 : 1/0) \
 		       with linespoints lc rgb "#1f77b4" pt 7 ps 0.6 title "tAcc (trusted)", \

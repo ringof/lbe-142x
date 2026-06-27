@@ -325,7 +325,9 @@ Live strip chart (GUI window if available, or ASCII in-terminal for SSH/no-X):
 ./lbe-142x --pid 0x2269 --clocklog >> run.csv &
 gnuplot -e "csv='run.csv'" scripts/clocklog_live.gp                 # GUI window
 gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp         # ASCII
-# options: window=<seconds> (default 120), refresh=<seconds> (default 1)
+gnuplot -e "csv='run.csv'; fromstart=1" scripts/clocklog_live.gp    # whole run, no sliding
+# options: window=<seconds> (default 120), fromstart (show all from first sample),
+#          refresh=<seconds> (default 1)
 ```
 
 Static plot of a finished log:
