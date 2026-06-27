@@ -371,7 +371,7 @@ static const char *ant_status_name(uint8_t s) {
 	}
 }
 static const char *ant_power_name(uint8_t p) {
-	return p == 0 ? "off" : p == 1 ? "on" : "?";
+	return p == 0 ? "off" : p == 1 ? "on" : p == 2 ? "DONTKNOW" : "?";
 }
 
 /* Wrap a UBX command for the device's 0x08 UBX-wrap opcode: the firmware adds

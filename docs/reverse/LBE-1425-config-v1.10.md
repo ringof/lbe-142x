@@ -145,6 +145,28 @@ confirms `--gnss`→CFG-GNSS and `--dynmodel`→CFG-NAV5 from the GPS side.
 padding (correctly skipped on resync); the remainder is a negligible
 frame-boundary fragment. No hidden or unhandled message types.
 
+## GNSS module (UBX-MON-VER, via --gps-info)
+
+The 1425 forwards UBX polls/`CFG-MSG` to its GNSS module, so `--gps-info` reads:
+
+```
+SW: ROM CORE 3.01 (107888)   HW: 00080000   FWVER=SPG 3.01   PROTVER=18.00
+GPS;GLO;GAL;BDS  SBAS;IMES;QZSS
+```
+
+→ a **u-blox M8** (HW `0x00080000`), ROM-based (NEO-M8N/M8M-class), Standard
+Precision GNSS firmware (not the M8T timing variant), protocol 18.00. This
+explains the GNSS behaviour: the BeiDou-vs-GPS/SBAS/Galileo exclusion is the M8
+3-concurrent-GNSS limitation, and NAV-SAT / 92-byte NAV-PVT are protocol-15+.
+
+**Antenna status:** `UBX-MON-HW` responds but reports `antStatus = DONTKNOW` /
+`antPower = DONTKNOW` — the board does **not** wire the antenna to the u-blox
+antenna supervisor; short detection is done MCU-side (the feature-report ANT
+bit, which only flags a *short*, never an open/disconnect). So accurate
+OK/OPEN/SHORT antenna status is **not obtainable in software** on this board, and
+MON-HW is not worth surfacing in `--status`. (The status feature-report ANT bit
+remains the only antenna signal.)
+
 ## Factory reset
 
 The vendor "factory reset" button is a **client-side macro** — it emits a
