@@ -310,47 +310,28 @@ static int mini_consume_ubx(uint8_t *buf, size_t *buf_len, size_t buf_cap,
 	*buf_len += payload;
 
 	int pvt_updates = 0;
-	size_t i = 0;
-	while (i + 8 <= *buf_len) {
-		if (buf[i] != 0xB5 || buf[i+1] != 0x62) {
-			if (st) {
-				if (buf[i] == 0x00 || buf[i] == 0xFF) st->pad_skips++;
-				else                                  st->resyncs++;
-			}
-			i++;
-			continue;
-		}
-		uint16_t ubx_len = (uint16_t)(buf[i+4] | (buf[i+5] << 8));
-		if (ubx_len > 512) {
-			i++;
-			if (st) st->resyncs++;
-			continue;
-		}
-		size_t total = (size_t)8 + ubx_len;
-		if (i + total > *buf_len) break;
-
-		if (!ubx_checksum_ok(&buf[i], total)) {
-			i++;
-			if (st) { st->ck_fails++; st->resyncs++; }
-			continue;
-		}
-
-		uint8_t class_ = buf[i+2];
-		uint8_t id     = buf[i+3];
-		const uint8_t *p = &buf[i+6];
-
-		if (class_ == 0x01 && id == 0x07) {
-			ubx_parse_pvt(p, ubx_len, pvt);
+	struct ubx_scan_stats ss = {0};
+	size_t off = 0;
+	uint8_t cls, id;
+	const uint8_t *p;
+	uint16_t plen;
+	while (ubx_next(buf, *buf_len, &off, &cls, &id, &p, &plen, &ss)) {
+		if (cls == 0x01 && id == 0x07) {
+			ubx_parse_pvt(p, plen, pvt);
 			if (pvt->valid) pvt_updates++;
-		} else if (class_ == 0x01 && id == 0x35) {
-			ubx_parse_sat(p, ubx_len, sv);
+		} else if (cls == 0x01 && id == 0x35) {
+			ubx_parse_sat(p, plen, sv);
 		}
 		if (st) st->parsed++;
-		i += total;
 	}
-	if (i > 0) {
-		memmove(buf, buf + i, *buf_len - i);
-		*buf_len -= i;
+	if (off > 0) {
+		memmove(buf, buf + off, *buf_len - off);
+		*buf_len -= off;
+	}
+	if (st) {
+		st->resyncs   += ss.resyncs;
+		st->ck_fails  += ss.ck_fails;
+		st->pad_skips += ss.pad_skips;
 	}
 	return pvt_updates;
 }
@@ -464,17 +445,12 @@ static int mini_gps_info(struct lbe_transport *t) {
 		memcpy(buf + buf_len, r + 2, payload);
 		buf_len += payload;
 
-		size_t i = 0;
-		while (i + 8 <= buf_len) {
-			if (buf[i] != 0xB5 || buf[i+1] != 0x62) { i++; continue; }
-			uint16_t ulen = (uint16_t)(buf[i+4] | (buf[i+5] << 8));
-			if (ulen > 1024) { i++; continue; }
-			size_t total = (size_t)8 + ulen;
-			if (i + total > buf_len) break;
-			if (!ubx_checksum_ok(&buf[i], total)) { i++; continue; }
-
-			if (buf[i+2] == 0x0A && buf[i+3] == 0x04 && ulen >= 40) {
-				const uint8_t *p = &buf[i+6];
+		size_t off = 0;
+		uint8_t cls, id;
+		const uint8_t *p;
+		uint16_t ulen;
+		while (ubx_next(buf, buf_len, &off, &cls, &id, &p, &ulen, NULL)) {
+			if (cls == 0x0A && id == 0x04 && ulen >= 40) {
 				printf("u-blox GPS module:\n");
 				printf("  SW version : %.30s\n", (const char *)p);
 				printf("  HW version : %.10s\n", (const char *)(p + 30));
@@ -487,11 +463,10 @@ static int mini_gps_info(struct lbe_transport *t) {
 				}
 				return 0;
 			}
-			i += total;
 		}
-		if (i > 0) {
-			memmove(buf, buf + i, buf_len - i);
-			buf_len -= i;
+		if (off > 0) {
+			memmove(buf, buf + off, buf_len - off);
+			buf_len -= off;
 		}
 	}
 	fprintf(stderr, "Timed out waiting for UBX-MON-VER response\n");
