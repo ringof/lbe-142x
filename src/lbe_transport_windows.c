@@ -223,7 +223,7 @@ static int feat_get_impl(struct lbe_transport *t, uint8_t report_id,
 		                      report_id, libusb_error_name(rc));
 		return -1;
 	}
-	/* For numbered-RID devices (LBE-1420/1421/1423, RID 0x4B and opcode
+	/* For numbered-RID devices (LBE-1420/1421/1423/1425, RID 0x4B and opcode
 	 * RIDs), WinUSB returns one extra prefix byte ahead of the firmware's
 	 * RID echo that Linux hidraw does not surface. Skip it so the byte
 	 * offsets the model code uses match between platforms. Mini (implicit

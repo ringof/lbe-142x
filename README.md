@@ -20,7 +20,7 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 - Set output frequency with Hz precision (persisted to flash)
 - Enable/disable outputs, low/normal power level
 - Blink output LED for device identification
-- `--status` dumps device state (PLL lock, GPS lock, antenna, frequencies, ...)
+- `--status` dumps device state (USB serial, PLL lock, GPS lock, antenna, frequencies, ...)
 - `--monitor` live GPS display (UTC, lat/lon, altitude, per-SV CNR bars)
 
 ### LBE-1421 / LBE-1423 specific
@@ -37,6 +37,8 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 - `--dynmodel <model>` — u-blox dynamic platform model (`portable|stationary|pedestrian|automotive|sea|airborne`, or a raw u-blox value)
 - `--nmea <0|1>` — enable/disable the NMEA output stream
 - `--diag` — live UBX diagnostics: per-SV CNR histogram (NAV-SAT) plus a clock-disciplining line (NAV-CLOCK: bias, drift, time/frequency accuracy), parsed from the EP 0x83 stream
+- `--gps-info` — u-blox module version (UBX-MON-VER), antenna status, and the constellations the receiver actually has enabled (UBX-CFG-GNSS)
+- `--status` additionally reports the **antenna bias current** — so it distinguishes "no antenna" (0 mA) from "OK" from "short", which the single short-circuit bit can't — plus the live GNSS mask, dynamic model and NMEA-output state
 
 ### LBE-Mini specific
 - `--drive <8|16|24|32>` — set OUT1 Si5351C drive strength in mA (four-level)
@@ -99,15 +101,15 @@ Options:
   --help                 Show this help
   --pid <0xNNNN>         Select a specific LBE device when more than one is attached
                          (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)
-  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=1600000000, 1421 <=1400000000, Mini <=810000000)
+  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=1600000000, 1421/1423 <=1400000000, 1425 OUT1 <=800000000, Mini <=810000000)
   --f1t <Hz>             Set OUT1 temporary frequency (not supported on Mini)
-  --f2 <Hz>              Set OUT2 frequency, save to flash (LBE-1421/1423 only)
-  --f2t <Hz>             Set OUT2 temporary frequency (LBE-1421/1423 only)
+  --f2 <Hz>              Set OUT2 frequency, save to flash (LBE-1421/1423/1425)
+  --f2t <Hz>             Set OUT2 temporary frequency (LBE-1421/1423/1425)
   --out <0|1>            Enable or disable outputs
   --pll <0|1>            Set PLL(0) or FLL(1) mode (not supported on Mini)
-  --pps <0|1>            Enable or disable 1PPS on OUT1 (LBE-1421/1423 only)
+  --pps <0|1>            Enable or disable 1PPS on OUT1 (LBE-1421/1423/1425)
   --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)
-  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423 only)
+  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423/1425)
   --drive <8|16|24|32>   Set OUT1 drive strength in mA (Mini only)
   --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40) (LBE-1425 only)
   --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
@@ -115,6 +117,7 @@ Options:
   --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1425 only)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
+  --statlog              Poll status ~1 Hz, log lock state + raw report tail (LBE-142x)
   --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423/1425: NMEA via CDC)
   --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423/1425)
   --gps-info             Print u-blox GPS module version + antenna status (Mini / LBE-1425)
@@ -127,12 +130,12 @@ Set OUT1 frequency to 10 MHz and save to flash:
 ./lbe-142x --f1 10000000
 ```
 
-Set a temporary (non-persisted) frequency on OUT2 (LBE-1421 only):
+Set a temporary (non-persisted) frequency on OUT2 (LBE-1421/1423/1425):
 ```
 ./lbe-142x --f2t 10500000
 ```
 
-Switch to FLL mode and enable 1PPS on OUT1 (LBE-1421 only):
+Switch to FLL mode and enable 1PPS on OUT1 (LBE-1421/1423/1425):
 ```
 ./lbe-142x --pll 1 --pps 1
 ```
@@ -159,6 +162,12 @@ Live UBX monitor on LBE-Mini:
 ./lbe-142x --pid 0x2211 --gps-info
 ```
 
+UBX diagnostics (CNR histogram + clock disciplining) and module info on LBE-1425:
+```
+./lbe-142x --pid 0x2269 --diag
+./lbe-142x --pid 0x2269 --gps-info
+```
+
 Select a specific device when both a Mini and a 1421 are attached:
 ```
 ./lbe-142x --pid 0x2444 --status
@@ -182,6 +191,28 @@ Device Status (0x7F):
   1PPS on OUT1: Enabled
   Mode: PLL
 ```
+LBE-1425 example (adds the serial number, antenna bias-current readout, and the
+GNSS / dynamic-model / NMEA config it echoes in the status report):
+```
+  Serial: 0C7BB80E70E5
+Device Status (0x7F):
+  GPS Lock: Yes
+  PLL Lock: Yes
+  Antenna: OK (5 mA)
+  Output(s) Enabled: Yes
+  OUT1 Frequency: 10000000 Hz
+  OUT1 Power Level: Normal
+  OUT2 Frequency: 10000000 Hz
+  OUT2 Power Level: Normal
+  1PPS on OUT1: Enabled
+  Mode: PLL
+  GNSS: 0x47 (GPS SBAS Galileo GLONASS)
+  Dynamic model: Stationary (2)
+  NMEA output: Enabled
+```
+On the 1425 the antenna line reads `OK (N mA)` / `Not connected (0 mA)` /
+`Short Circuit`, using the board's antenna bias-current measurement.
+
 LBE-Mini example (no antenna / OUT2 / PLL-mode lines; `--drive` and signal-loss shown instead):
 ```
 Device Status (0x23):
@@ -198,7 +229,7 @@ Device Status (0x23):
 `--monitor` renders a TUI with real-time UTC, position, altitude, fix quality, and a CNR bar chart per satellite.
 The display is redrawn continuously; press Ctrl-C to exit.
 
-**LBE-1421 / 1423 chronometer mode:** sub-second UTC is interpolated from the 1PPS signal (carried on the CDC DCD line).
+**LBE-1421 / 1423 / 1425 chronometer mode:** sub-second UTC is interpolated from the 1PPS signal (carried on the CDC DCD line).
 The trailing status line reports the rolling PPS jitter over the last 30 edges:
 ```
 UTC:  2026-04-20 13:55:08.094

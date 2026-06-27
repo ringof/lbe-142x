@@ -18,7 +18,10 @@ void print_usage(int model, int is_1425) {
 	int is_1420 = (model == LBE_1420);
 	int is_mini = (model == LBE_MINI);
 	int is_1421 = (model == LBE_1421_DUALOUT);
+	/* OUT1 cap. The 1425 caps OUT1 at 800 MHz (its 1PPS output) -- the rest
+	 * of the 1421 family go to 1.4 GHz. */
 	unsigned long mf =
+		is_1425 ? LBE_1425_OUT1_MAX_FREQ :
 		is_1420 ? LBE_1420_MAX_FREQ :
 		is_mini ? LBE_MINI_MAX_FREQ :
 		          LBE_1421_MAX_FREQ;
@@ -30,8 +33,8 @@ void print_usage(int model, int is_1425) {
 	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)\n");
 
 	if (generic)
-		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421 <=%lu, Mini <=%lu)\n",
-		       LBE_1420_MAX_FREQ, LBE_1421_MAX_FREQ, LBE_MINI_MAX_FREQ);
+		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421/1423 <=%lu, 1425 OUT1 <=%lu, Mini <=%lu)\n",
+		       LBE_1420_MAX_FREQ, LBE_1421_MAX_FREQ, LBE_1425_OUT1_MAX_FREQ, LBE_MINI_MAX_FREQ);
 	else
 		printf("  --f1 <Hz>              Set OUT1 frequency (1-%lu Hz), save to flash\n", mf);
 
@@ -41,9 +44,9 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1421) {
 		printf("  --f2 <Hz>              Set OUT2 frequency, save to flash%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 		printf("  --f2t <Hz>             Set OUT2 temporary frequency%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
 
 	printf("  --out <0|1>            Enable or disable outputs\n");
@@ -54,13 +57,13 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1421)
 		printf("  --pps <0|1>            Enable or disable 1PPS on OUT1%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 
 	printf("  --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)\n");
 
 	if (generic || is_1421)
 		printf("  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1)%s\n",
-		       generic ? " (LBE-1421/1423 only)" : "");
+		       generic ? " (LBE-1421/1423/1425)" : "");
 
 	if (generic || is_mini)
 		printf("  --drive <8|16|24|32>   Set OUT1 drive strength in mA%s\n",
@@ -216,7 +219,7 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(argv[i], "--pps") == 0) {
 			if (model != LBE_1421_DUALOUT) {
-				fprintf(stderr, "1PPS on OUT1 control is only supported on LBE-1421\n");
+				fprintf(stderr, "1PPS on OUT1 control is only supported on LBE-1421/1423/1425\n");
 				continue;
 			}
 			if (i + 1 < argc) {

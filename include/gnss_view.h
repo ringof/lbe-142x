@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 /* PVT (position/velocity/time) snapshot. Populated from UBX NAV-PVT on
- * the Mini, or from NMEA GGA/RMC on the 1421/1423. */
+ * the Mini, or from NMEA GGA/RMC on the 1421/1423/1425. */
 struct gnss_pvt {
 	int      valid;
 	uint16_t year;
