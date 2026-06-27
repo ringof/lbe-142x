@@ -129,6 +129,8 @@ void print_usage(int model, int is_1425) {
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --diag                 Live UBX diagnostics (CNR histogram + clock"
 		       " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
+		printf("  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting"
+		       " (Ctrl-C, or run N s)%s\n", generic ? " (LBE-1425 only)" : "");
 	}
 
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
@@ -530,6 +532,14 @@ int main(int argc, char *argv[]) {
 			changed = 1;
 		} else if (strcmp(argv[i], "--diag") == 0) {
 			lbe_diag(dev);
+			changed = 1;
+		} else if (strcmp(argv[i], "--clocklog") == 0) {
+			/* --clocklog [seconds]: CSV NAV-CLOCK time series. Optional
+			 * positive duration; default runs until Ctrl-C. */
+			int seconds = 0;
+			if (i + 1 < argc && argv[i+1][0] >= '0' && argv[i+1][0] <= '9')
+				seconds = atoi(argv[++i]);
+			lbe_clocklog(dev, seconds);
 			changed = 1;
 		} else if (strcmp(argv[i], "--rawdump") == 0) {
 			/* Hidden RE helper: --rawdump [ep] [ms]. Defaults ep=0x81,

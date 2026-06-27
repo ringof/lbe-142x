@@ -150,7 +150,7 @@ surfaces all of it on the 1425.
 The HID interrupt-IN endpoint **EP 0x83** carries a **u-blox UBX binary stream** —
 the vendor GUI's "diagnostics" view (including the live per-satellite CNR
 histogram). It is HID-framed: each 64-byte interrupt transfer is
-`[seq byte][0x3E = 62][62 bytes of payload]`; concatenating the 62-byte payloads
+`[byte0][0x3E = 62][62 bytes of payload]`; concatenating the 62-byte payloads
 reassembles a continuous UBX stream. De-framed, a sample capture yields 251
 valid UBX messages with **zero checksum failures**:
 
@@ -163,8 +163,19 @@ valid UBX messages with **zero checksum failures**:
 
 This is the same UBX content the LBE-Mini streams over HID, so the existing UBX
 parser (`src/model_mini.c`) and CNR renderer (`src/gnss_view.c`) can be reused
-for a 1425 diagnostics monitor after stripping the 2-byte `[seq][len]` frame
+for a 1425 diagnostics monitor after stripping the 2-byte `[byte0][len]` frame
 header. `python/parse_pcapng.py --ubx` de-frames and decodes it.
+
+**`byte0` is not a per-frame sequence counter.** Earlier notes called it a
+"seq byte"; the captures don't support that. Across `tests/fixtures/`
+`ubx_1425_noant.bin` (398 frames) it takes **only two values, `0x6E` and
+`0x76`**, and holds constant across whole multi-frame UBX message groups (runs
+of 25, 12, 5, 11, … frames), flipping between the two at group boundaries — so
+it reads more like a buffer/pipe tag than a counter. It therefore can **not** be
+used to detect dropped frames: a "+1 mod 256" continuity test flags 397/397
+transitions in otherwise-healthy data. For dropped-frame / gap detection,
+`--clocklog` uses the **u-blox `iTOW`** (NAV-CLOCK payload offset 0) instead,
+which is the authoritative, jitter-immune time axis.
 
 The `0x08` writes (`08 06 01 08 00 01 <sel> 0A`) are CFG-MSG wraps: the `<sel>`
 byte is the u-blox NAV message id to enable — `0x07`=NAV-PVT, `0x22`=NAV-CLOCK,
