@@ -14,6 +14,8 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef LBE_FIXTURE_DIR
 #define LBE_FIXTURE_DIR "tests/fixtures"
@@ -62,12 +64,29 @@ struct clocklog_replay_ctx {
 	double last_itow;
 };
 
+/* Start of the n-th (0-based) comma-separated field in `row`, or NULL if the
+ * row has fewer fields. (Avoids sscanf, which MSVC /WX rejects as C4996.) */
+static const char *csv_field(const char *row, int n) {
+	const char *p = row;
+	while (n-- > 0) {
+		p = strchr(p, ',');
+		if (!p) return NULL;
+		p++;
+	}
+	return p;
+}
+
 static void clocklog_replay_emit(const char *row, void *vctx) {
 	struct clocklog_replay_ctx *c = (struct clocklog_replay_ctx *)vctx;
-	double itow; int clkb, clkd; long ta, fa; int fix, nsv, val, gap;
-	if (sscanf(row, "%lf,%d,%d,%ld,%ld,%d,%d,%d,%d",
-	           &itow, &clkb, &clkd, &ta, &fa, &fix, &nsv, &val, &gap) != 9)
-		return;
+	const char *f_itow = csv_field(row, 0);
+	const char *f_fix  = csv_field(row, 5);
+	const char *f_val  = csv_field(row, 7);
+	const char *f_gap  = csv_field(row, 8);
+	if (!f_itow || !f_fix || !f_val || !f_gap) return;  /* malformed row */
+	double itow = strtod(f_itow, NULL);
+	long fix = strtol(f_fix, NULL, 10);
+	long val = strtol(f_val, NULL, 10);
+	long gap = strtol(f_gap, NULL, 10);
 	c->s->rows++;
 	if (val) c->s->valid_rows++;
 	if (fix == 3) c->s->fix3_rows++;
