@@ -14,6 +14,7 @@ struct gnss_pvt {
 	uint16_t year;
 	uint8_t  month, day, hour, min, sec;
 	uint8_t  fix_type;    /* 0=no fix, 2=2D, 3=3D (same as UBX codes) */
+	uint8_t  time_valid;  /* 1 if the UTC date/time fields are trustworthy */
 	uint8_t  num_sv;
 	int32_t  lon_1e7;
 	int32_t  lat_1e7;

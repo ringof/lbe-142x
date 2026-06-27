@@ -24,6 +24,10 @@ void ubx_parse_pvt(const uint8_t *p, int n, struct gnss_pvt *pvt) {
 	pvt->min      = p[9];
 	pvt->sec      = p[10];
 	pvt->fix_type = p[20];
+	/* NAV-PVT valid flags (p[11]): bit0 validDate, bit1 validTime. Without
+	 * a fix the receiver emits a placeholder date/time -- flag it untrusted
+	 * so the renderer doesn't show e.g. a 2015 epoch as if it were real. */
+	pvt->time_valid = ((p[11] & 0x03) == 0x03);
 	pvt->num_sv   = p[23];
 	pvt->lon_1e7  = (int32_t)((uint32_t)p[24] | ((uint32_t)p[25] << 8)
 	                        | ((uint32_t)p[26] << 16) | ((uint32_t)p[27] << 24));

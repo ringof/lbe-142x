@@ -333,9 +333,16 @@ static int m1425_diag(struct lbe_transport *t) {
 			                &pvt, &sv, &clk) > 0) {
 				gnss_draw("LBE-1425 GPS Diagnostics", &pvt, &sv, -1);
 				if (clk.valid) {
+					/* u-blox reports 0xFFFFFFFF when an accuracy is unknown
+					 * (e.g. before a fix) -- show n/a rather than 4294967295. */
+					char ta[20], fa[20];
+					if (clk.tacc_ns == UINT32_MAX) snprintf(ta, sizeof ta, "n/a");
+					else snprintf(ta, sizeof ta, "%u ns", clk.tacc_ns);
+					if (clk.facc_ps == UINT32_MAX) snprintf(fa, sizeof fa, "n/a");
+					else snprintf(fa, sizeof fa, "%u ps/s", clk.facc_ps);
 					printf("\nClock:  bias=%+d ns  drift=%+d ns/s  "
-					       "tAcc=%u ns  fAcc=%u ps/s\033[K\n",
-					       clk.clkb_ns, clk.clkd_nsps, clk.tacc_ns, clk.facc_ps);
+					       "tAcc=%s  fAcc=%s\033[K\n",
+					       clk.clkb_ns, clk.clkd_nsps, ta, fa);
 				} else {
 					printf("\nClock:  (no solution yet)\033[K\n");
 				}
