@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define MODEL_GENERIC (-1)
 
@@ -80,6 +81,10 @@ void print_usage(int model, int is_1425) {
 
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
 	printf("  --status               Display current device status\n");
+
+	if (generic || is_1421)
+		printf("  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
+		       generic ? " (LBE-142x)" : "");
 
 	if (generic || is_mini || is_1421) {
 		printf("  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
@@ -336,6 +341,28 @@ int main(int argc, char *argv[]) {
 					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
 				}
 			}
+		} else if (strcmp(argv[i], "--statlog") == 0) {
+			/* Poll the status report ~1 Hz and print the lock state plus the
+			 * raw report tail (bytes the decoder ignores, e.g. offset 21 on
+			 * the 1421/1425). For studying how the tail moves through
+			 * acquiring->locked and over time (temperature/voltage?). */
+			printf("time      raw  GPS PLL ANT | bytes[18..40]   (Ctrl-C to stop)\n");
+			for (;;) {
+				if (lbe_get_device_status(dev, &status) == 0) {
+					time_t now = time(NULL);
+					struct tm *lt = localtime(&now);
+					char ts[16];
+					strftime(ts, sizeof ts, "%H:%M:%S", lt);
+					printf("%s  0x%02X  %d   %d   %d  |", ts, status.raw_status,
+					       !!(status.raw_status & LBE_GPS_LOCK_BIT),
+					       status.pll_locked, status.antenna_ok);
+					for (int b = 18; b <= 40; b++) printf(" %02X", status.raw[b]);
+					printf("\n");
+					fflush(stdout);
+				}
+				lbe_sleep_ms(1000);
+			}
+			changed = 1;
 		} else if (strcmp(argv[i], "--monitor") == 0) {
 			/* Let the shared monitor impl render the real model in its
 			 * title (1421/1423/1425 share one monitor function). */

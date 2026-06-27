@@ -52,6 +52,7 @@ static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 		else return -1;   /* persistently implausible -- treat as failed read */
 	}
 
+	memcpy(s->raw, buf, LBE_REPORT_SIZE);   /* keep the raw report for inspection */
 	s->raw_status     = buf[1];
 	s->frequency1     = buf[6]  | (buf[7]  << 8) | (buf[8]  << 16) | (buf[9]  << 24);
 	s->frequency2     = buf[14] | (buf[15] << 8) | (buf[16] << 16) | (buf[17] << 24);

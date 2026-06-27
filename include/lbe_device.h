@@ -33,6 +33,10 @@ struct lbe_status {
     /* Mini only: firmware's running "Signal loss count" (what the vendor
      * GUI shows). 0 for other models. */
     uint8_t signal_loss_count;
+    /* Raw status feature report as read off the wire (for inspecting bytes
+     * the decoder doesn't interpret, e.g. the 1421/1425 tail at offset 21).
+     * Filled by models that read a fixed-size report; zero otherwise. */
+    uint8_t raw[64];
 };
 
 /* Open an LBE device. Pass preferred_pid=0 to auto-select the only
