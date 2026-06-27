@@ -387,6 +387,14 @@ static const char *ant_power_name(uint8_t p) {
 	return p == 0 ? "off" : p == 1 ? "on" : p == 2 ? "DONTKNOW" : "?";
 }
 
+static const char *gnssid_name(uint8_t g) {
+	switch (g) {
+	case 0: return "GPS"; case 1: return "SBAS"; case 2: return "Galileo";
+	case 3: return "BeiDou"; case 4: return "IMES"; case 5: return "QZSS";
+	case 6: return "GLONASS"; default: return "?";
+	}
+}
+
 /* Wrap a UBX command for the device's 0x08 UBX-wrap opcode: the firmware adds
  * the B5 62 sync + checksum, we hand it {class, id, len_lo, len_hi, payload}. */
 static void m1425_ubx_wrap(struct lbe_transport *t, const uint8_t *w, size_t n) {
@@ -397,18 +405,20 @@ static int m1425_gps_info(struct lbe_transport *t) {
 	lbe_transport_claim(t);
 	/* MON-VER poll, and enable MON-HW (0A 09) + MON-RF (0A 38) at rate 1 via
 	 * CFG-MSG (06 01, 8-byte payload: msgClass, msgID, rate[6]). */
-	const uint8_t ver_poll[] = {0x0A, 0x04, 0x00, 0x00};
+	const uint8_t ver_poll[]  = {0x0A, 0x04, 0x00, 0x00};
+	const uint8_t gnss_poll[] = {0x06, 0x3E, 0x00, 0x00};   /* poll CFG-GNSS */
 	const uint8_t en_hw[]    = {0x06,0x01,0x08,0x00, 0x0A,0x09,0x01,0,0,0,0,0};
 	const uint8_t en_rf[]    = {0x06,0x01,0x08,0x00, 0x0A,0x38,0x01,0,0,0,0,0};
 	m1425_ubx_wrap(t, ver_poll, sizeof ver_poll);
+	m1425_ubx_wrap(t, gnss_poll, sizeof gnss_poll);
 	m1425_ubx_wrap(t, en_hw, sizeof en_hw);
 	m1425_ubx_wrap(t, en_rf, sizeof en_rf);
 
 	printf("u-blox GPS module:\n");
 	uint8_t buf[2048];
 	size_t  buf_len = 0;
-	int got_ver = 0, got_ant = 0;
-	for (int iter = 0; iter < 120 && !(got_ver && got_ant); iter++) {
+	int got_ver = 0, got_ant = 0, got_gnss = 0;
+	for (int iter = 0; iter < 120 && !(got_ver && got_ant && got_gnss); iter++) {
 		uint8_t r[LBE_1425_DIAG_FRM];
 		int n = lbe_transport_read_input(t, LBE_1425_DIAG_EP, r, sizeof r, 50);
 		if (n < 3 || r[1] == 0) continue;
@@ -444,6 +454,17 @@ static int m1425_gps_info(struct lbe_transport *t) {
 					       ant_status_name(p[4 + 24 * b + 2]),
 					       ant_power_name(p[4 + 24 * b + 3]), b);
 				got_ant = 1;
+			} else if (cls == 0x06 && id == 0x3E && ul >= 4 && !got_gnss) {
+				/* CFG-GNSS: per 8-byte block {gnssId, .., flags(LE32)};
+				 * flags bit 0 = enabled. Lists what the u-blox is really
+				 * tracking -- incl. QZSS/IMES, which the vendor UI hides. */
+				printf("  GNSS enabled:");
+				for (uint8_t b = 0; b < p[3] && 4 + 8u * b + 8 <= ul; b++) {
+					const uint8_t *blk = p + 4 + 8 * b;
+					if (blk[4] & 0x01) printf(" %s", gnssid_name(blk[0]));
+				}
+				printf("\n");
+				got_gnss = 1;
 			}
 			i += total;
 		}
@@ -461,7 +482,9 @@ static int m1425_gps_info(struct lbe_transport *t) {
 		fprintf(stderr, "  (no MON-VER reply -- poll may not be forwarded)\n");
 	if (!got_ant)
 		fprintf(stderr, "  (no MON-HW/RF reply -- antenna status unavailable)\n");
-	return (got_ver || got_ant) ? 0 : -1;
+	if (!got_gnss)
+		fprintf(stderr, "  (no CFG-GNSS reply -- constellation list unavailable)\n");
+	return (got_ver || got_ant || got_gnss) ? 0 : -1;
 }
 
 const struct lbe_model_ops lbe_ops_1421 = {
