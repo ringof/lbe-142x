@@ -352,6 +352,38 @@ int main(int argc, char *argv[]) {
 				if (model != LBE_MINI) {
 					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
 				}
+				/* 1425 echoes the GNSS mask (byte 21) and dynamic model
+				 * (byte 22) in its status report -- show the live config. */
+				if (lbe_get_pid(dev) == PID_LBE_1425) {
+					static const struct { uint8_t bit; const char *name; } gn[] = {
+						{LBE_1425_GNSS_GPS, "GPS"}, {LBE_1425_GNSS_SBAS, "SBAS"},
+						{LBE_1425_GNSS_GALILEO, "Galileo"}, {LBE_1425_GNSS_BEIDOU, "BeiDou"},
+						{LBE_1425_GNSS_IMES, "IMES"}, {LBE_1425_GNSS_QZSS, "QZSS"},
+						{LBE_1425_GNSS_GLONASS, "GLONASS"},
+					};
+					uint8_t mask = status.raw[21];
+					printf("  GNSS: 0x%02X (", mask);
+					int first = 1;
+					for (size_t g = 0; g < sizeof gn / sizeof gn[0]; g++)
+						if (mask & gn[g].bit) {
+							printf("%s%s", first ? "" : " ", gn[g].name);
+							first = 0;
+						}
+					printf("%s)\n", first ? "none" : "");
+					const char *dm;
+					switch (status.raw[22]) {
+					case 0:  dm = "Portable"; break;
+					case 2:  dm = "Stationary"; break;
+					case 3:  dm = "Pedestrian"; break;
+					case 4:  dm = "Automotive"; break;
+					case 5:  dm = "Sea"; break;
+					case 6:  dm = "Airborne<1g"; break;
+					case 7:  dm = "Airborne<2g"; break;
+					case 8:  dm = "Airborne<4g"; break;
+					default: dm = "?"; break;
+					}
+					printf("  Dynamic model: %s (%u)\n", dm, status.raw[22]);
+				}
 			}
 		} else if (strcmp(argv[i], "--statlog") == 0) {
 			/* Poll the status report ~1 Hz and print the lock state plus the
