@@ -444,21 +444,29 @@ int main(int argc, char *argv[]) {
 			 * acquiring->locked and over time (temperature/voltage?). */
 			printf("time      raw  GPS PLL ANT | bytes[18..40]   (Ctrl-C to stop)\n");
 			for (;;) {
-				if (lbe_get_device_status(dev, &status) == 0) {
-					time_t now = time(NULL);
-					struct tm *lt = localtime(&now);
-					char ts[16];
-					strftime(ts, sizeof ts, "%H:%M:%S", lt);
-					printf("%s  0x%02X  %d   %d   %d  |", ts, status.raw_status,
-					       !!(status.raw_status & LBE_GPS_LOCK_BIT),
-					       status.pll_locked, status.antenna_ok);
-					for (int b = 18; b <= 40; b++) printf(" %02X", status.raw[b]);
-					printf("\n");
-					fflush(stdout);
+				if (lbe_get_device_status(dev, &status) != 0) {
+					/* The transport already retries genuinely transient
+					 * control-pipe errors (EPIPE/EAGAIN/EBUSY/EINTR), so a
+					 * failure that surfaces here means the device went away
+					 * (USB unplug / re-enumerate). Stop with one message
+					 * instead of spinning and spamming the per-poll error
+					 * forever. */
+					fprintf(stderr, "--statlog: status read failed "
+					        "(device disconnected?); stopping.\n");
+					break;
 				}
+				time_t now = time(NULL);
+				struct tm *lt = localtime(&now);
+				char ts[16];
+				strftime(ts, sizeof ts, "%H:%M:%S", lt);
+				printf("%s  0x%02X  %d   %d   %d  |", ts, status.raw_status,
+				       !!(status.raw_status & LBE_GPS_LOCK_BIT),
+				       status.pll_locked, status.antenna_ok);
+				for (int b = 18; b <= 40; b++) printf(" %02X", status.raw[b]);
+				printf("\n");
+				fflush(stdout);
 				lbe_sleep_ms(1000);
 			}
-			/* never reached: --statlog loops until Ctrl-C */
 		} else if (strcmp(argv[i], "--probe-op") == 0) {
 			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
 			 * and report which status-report bytes it changed. */
