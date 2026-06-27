@@ -358,6 +358,99 @@ static int m1425_diag(struct lbe_transport *t) {
 	return 0;
 }
 
+/* --- LBE-1425 GPS info / true antenna status (experimental) ----------------
+ * The feature-report ANT bit only flags a *short*; a disconnected antenna
+ * reads "OK". The u-blox knows the real state via UBX-MON-HW (M8) or MON-RF
+ * (M9/M10) antStatus (OK/OPEN/SHORT). We poll MON-VER (one-shot) for the
+ * module version, and enable MON-HW + MON-RF (CFG-MSG, the same wrap --diag
+ * uses) to read antStatus, then turn them back off. */
+static const char *ant_status_name(uint8_t s) {
+	switch (s) {
+	case 0: return "INIT"; case 1: return "DONTKNOW"; case 2: return "OK";
+	case 3: return "SHORT"; case 4: return "OPEN"; default: return "?";
+	}
+}
+static const char *ant_power_name(uint8_t p) {
+	return p == 0 ? "off" : p == 1 ? "on" : "?";
+}
+
+/* Wrap a UBX command for the device's 0x08 UBX-wrap opcode: the firmware adds
+ * the B5 62 sync + checksum, we hand it {class, id, len_lo, len_hi, payload}. */
+static void m1425_ubx_wrap(struct lbe_transport *t, const uint8_t *w, size_t n) {
+	send_cmd(t, LBE_MINI_UBX_WRAP, w, 1, n);
+}
+
+static int m1425_gps_info(struct lbe_transport *t) {
+	lbe_transport_claim(t);
+	/* MON-VER poll, and enable MON-HW (0A 09) + MON-RF (0A 38) at rate 1 via
+	 * CFG-MSG (06 01, 8-byte payload: msgClass, msgID, rate[6]). */
+	const uint8_t ver_poll[] = {0x0A, 0x04, 0x00, 0x00};
+	const uint8_t en_hw[]    = {0x06,0x01,0x08,0x00, 0x0A,0x09,0x01,0,0,0,0,0};
+	const uint8_t en_rf[]    = {0x06,0x01,0x08,0x00, 0x0A,0x38,0x01,0,0,0,0,0};
+	m1425_ubx_wrap(t, ver_poll, sizeof ver_poll);
+	m1425_ubx_wrap(t, en_hw, sizeof en_hw);
+	m1425_ubx_wrap(t, en_rf, sizeof en_rf);
+
+	printf("u-blox GPS module:\n");
+	uint8_t buf[2048];
+	size_t  buf_len = 0;
+	int got_ver = 0, got_ant = 0;
+	for (int iter = 0; iter < 120 && !(got_ver && got_ant); iter++) {
+		uint8_t r[LBE_1425_DIAG_FRM];
+		int n = lbe_transport_read_input(t, LBE_1425_DIAG_EP, r, sizeof r, 50);
+		if (n < 3 || r[1] == 0) continue;
+		size_t payload = r[1];
+		if (payload > (size_t)(n - 2)) payload = (size_t)(n - 2);
+		if (buf_len + payload > sizeof buf) buf_len = 0;
+		memcpy(buf + buf_len, r + 2, payload);
+		buf_len += payload;
+
+		size_t i = 0;
+		while (i + 8 <= buf_len) {
+			if (buf[i] != 0xB5 || buf[i + 1] != 0x62) { i++; continue; }
+			size_t ul = (size_t)(buf[i + 4] | (buf[i + 5] << 8));
+			if (ul > 1024) { i++; continue; }
+			size_t total = 8 + ul;
+			if (i + total > buf_len) break;
+			if (!ubx_checksum_ok(&buf[i], total)) { i++; continue; }
+			uint8_t cls = buf[i + 2], id = buf[i + 3];
+			const uint8_t *p = &buf[i + 6];
+			if (cls == 0x0A && id == 0x04 && ul >= 40 && !got_ver) {
+				printf("  SW version : %.30s\n", (const char *)p);
+				printf("  HW version : %.10s\n", (const char *)(p + 30));
+				for (size_t eo = 40, e = 0; eo + 30 <= ul; eo += 30)
+					printf("  Extension %zu: %.30s\n", ++e, (const char *)(p + eo));
+				got_ver = 1;
+			} else if (cls == 0x0A && id == 0x09 && ul >= 22 && !got_ant) {
+				printf("  Antenna    : %s (power %s)  [MON-HW]\n",
+				       ant_status_name(p[20]), ant_power_name(p[21]));
+				got_ant = 1;
+			} else if (cls == 0x0A && id == 0x38 && ul >= 4 && !got_ant) {
+				for (uint8_t b = 0; b < p[1] && 4 + 24u * b + 4 <= ul; b++)
+					printf("  Antenna    : %s (power %s)  [MON-RF block %u]\n",
+					       ant_status_name(p[4 + 24 * b + 2]),
+					       ant_power_name(p[4 + 24 * b + 3]), b);
+				got_ant = 1;
+			}
+			i += total;
+		}
+		if (i > 0) { memmove(buf, buf + i, buf_len - i); buf_len -= i; }
+	}
+
+	/* Turn the MON-HW / MON-RF streams back off (rate 0). */
+	const uint8_t dis_hw[] = {0x06,0x01,0x08,0x00, 0x0A,0x09,0x00,0,0,0,0,0};
+	const uint8_t dis_rf[] = {0x06,0x01,0x08,0x00, 0x0A,0x38,0x00,0,0,0,0,0};
+	m1425_ubx_wrap(t, dis_hw, sizeof dis_hw);
+	m1425_ubx_wrap(t, dis_rf, sizeof dis_rf);
+	lbe_transport_release(t);
+
+	if (!got_ver)
+		fprintf(stderr, "  (no MON-VER reply -- poll may not be forwarded)\n");
+	if (!got_ant)
+		fprintf(stderr, "  (no MON-HW/RF reply -- antenna status unavailable)\n");
+	return (got_ver || got_ant) ? 0 : -1;
+}
+
 const struct lbe_model_ops lbe_ops_1421 = {
 	.name               = "1421 dual output",
 	.max_freq           = LBE_1421_MAX_FREQ,
@@ -393,4 +486,5 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.set_dynmodel       = m1425_set_dynmodel,
 	.set_nmea           = m1425_set_nmea,
 	.diag               = m1425_diag,
+	.gps_info           = m1425_gps_info,
 };

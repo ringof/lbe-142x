@@ -89,9 +89,9 @@ void print_usage(int model, int is_1425) {
 		printf("  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
 		       generic ? " (LBE-1421/1423/1425)" : "");
 	}
-	if (generic || is_mini) {
-		printf("  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER)%s\n",
-		       generic ? " (Mini only)" : "");
+	if (generic || is_mini || is_1425) {
+		printf("  --gps-info             Print u-blox GPS module version + antenna status%s\n",
+		       generic ? " (Mini / LBE-1425)" : "");
 	}
 }
 
