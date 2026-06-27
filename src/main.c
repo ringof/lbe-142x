@@ -293,23 +293,23 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(argv[i], "--dynmodel") == 0) {
 			if (i + 1 < argc) {
 				const char *a = argv[++i];
-				int model = -1;
-				if      (strcmp(a, "portable") == 0)   model = 0;
-				else if (strcmp(a, "stationary") == 0) model = 2;
-				else if (strcmp(a, "pedestrian") == 0) model = 3;
-				else if (strcmp(a, "automotive") == 0) model = 4;
-				else if (strcmp(a, "sea") == 0)        model = 5;
-				else if (strcmp(a, "airborne") == 0)   model = 8;
+				int dynmodel = -1;
+				if      (strcmp(a, "portable") == 0)   dynmodel = 0;
+				else if (strcmp(a, "stationary") == 0) dynmodel = 2;
+				else if (strcmp(a, "pedestrian") == 0) dynmodel = 3;
+				else if (strcmp(a, "automotive") == 0) dynmodel = 4;
+				else if (strcmp(a, "sea") == 0)        dynmodel = 5;
+				else if (strcmp(a, "airborne") == 0)   dynmodel = 8;
 				else {
 					char *end;
 					unsigned long v = strtoul(a, &end, 0);
-					if (*end == '\0' && v <= 0xFF) model = (int)v;
+					if (*end == '\0' && v <= 0xFF) dynmodel = (int)v;
 				}
-				if (model < 0) {
+				if (dynmodel < 0) {
 					fprintf(stderr, "Invalid dynamic model: %s (portable|stationary|"
 					        "pedestrian|automotive|sea|airborne or a u-blox value)\n", a);
-				} else if (lbe_set_dynmodel(dev, (uint8_t)model) == 0) {
-					printf("  Set dynamic model to %d\n", model);
+				} else if (lbe_set_dynmodel(dev, (uint8_t)dynmodel) == 0) {
+					printf("  Set dynamic model to %d\n", dynmodel);
 					changed = 1;
 				}
 			}
