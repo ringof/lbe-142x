@@ -64,7 +64,7 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 ## Building the Project
 
 ```
-git clone https://github.com/bvernoux/lbe-142x.git
+git clone https://github.com/ringof/lbe-142x.git
 cd lbe-142x
 ```
 
@@ -90,13 +90,41 @@ cmake --build build
 
 All three toolchains treat warnings as errors (`/W4 /WX` on MSVC, `-Wall -Wextra -Werror` elsewhere).
 
+### Tests
+
+Hardware-free unit + replay tests (UBX / NMEA / clocklog parsers and replay of
+captured EP 0x83 diagnostics frames) build behind `-DLBE_BUILD_TESTS=ON`:
+
+```
+cmake -B build -DLBE_BUILD_TESTS=ON
+cmake --build build
+./build/bin/lbe-tests        # the unit suite  (or: cd build && ctest --output-on-failure)
+```
+
+Build with sanitizers (AddressSanitizer + UndefinedBehaviorSanitizer) to catch
+memory / undefined-behaviour bugs:
+
+```
+cmake -B build-asan -DLBE_BUILD_TESTS=ON -DLBE_SANITIZE=address,undefined
+cmake --build build-asan && ./build-asan/bin/lbe-tests
+```
+
+A pure-Python parser self-test runs with no C toolchain at all:
+
+```
+python3 python/test_lbe1425.py --self-test
+```
+
+CI runs all of these on every push: the C suite, the sanitizer build, a Valgrind
+pass, and the Python self-test (Linux), plus the `/W4 /WX` Windows build.
+
 ## Usage
 
 `lbe-142x --help` prints a help screen tailored to the connected device.
 Run with no device attached (or with `--help --pid 0xDEAD`) to see the generic help covering every supported model:
 
 ```
-lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config
+lbe-142x v1.4 27 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config
 Usage: lbe-142x [OPTIONS]
 Options:
   --help                 Show this help

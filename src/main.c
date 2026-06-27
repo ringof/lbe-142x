@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
 	/* Banner + the "Connected to" line below are human-facing chatter -> stderr,
 	 * so data modes that write machine-readable output to stdout (e.g.
 	 * `--clocklog >> run.csv`) produce a clean, uncontaminated stream. */
-	fprintf(stderr, "lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
+	fprintf(stderr, "lbe-142x v1.4 27 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
 
 	/* Pre-scan for --pid and --help so device-open can filter the
 	 * enumeration and --help works without a device attached. */
