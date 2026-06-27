@@ -33,7 +33,7 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 ### LBE-1425 specific
 - Everything in the LBE-1421/1423 set above (dual output, 1PPS, PLL/FLL, NMEA `--monitor`)
 - Asymmetric per-output frequency limits: OUT1 ≤ 800 MHz (the 1PPS output), OUT2 ≤ 1.4 GHz
-- `--gnss <0xNN>` — GNSS constellation enable bitmask (GPS=0x01, SBAS=0x02, Galileo=0x04, BeiDou=0x08, GLONASS=0x40). BeiDou is mutually exclusive with GPS/SBAS/Galileo; GLONASS is unrestricted.
+- `--gnss <0xNN>` — GNSS constellation enable bitmask (`bit = 1<<gnssId`: GPS=0x01, SBAS=0x02, Galileo=0x04, BeiDou=0x08, IMES=0x10, QZSS=0x20, GLONASS=0x40). BeiDou is mutually exclusive with GPS/SBAS/Galileo; GLONASS is unrestricted. QZSS works even though the vendor UI doesn't expose it.
 - `--dynmodel <model>` — u-blox dynamic platform model (`portable|stationary|pedestrian|automotive|sea|airborne`, or a raw u-blox value)
 - `--nmea <0|1>` — enable/disable the NMEA output stream
 - `--diag` — live UBX diagnostics: per-SV CNR histogram (NAV-SAT) plus a clock-disciplining line (NAV-CLOCK: bias, drift, time/frequency accuracy), parsed from the EP 0x83 stream
@@ -109,7 +109,7 @@ Options:
   --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)
   --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423 only)
   --drive <8|16|24|32>   Set OUT1 drive strength in mA (Mini only)
-  --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40) (LBE-1425 only)
+  --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40) (LBE-1425 only)
   --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
   --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
   --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1425 only)
@@ -117,7 +117,7 @@ Options:
   --status               Display current device status
   --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423/1425: NMEA via CDC)
   --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423/1425)
-  --gps-info             Print u-blox GPS module SW/HW version (UBX-MON-VER) (Mini only)
+  --gps-info             Print u-blox GPS module version + antenna status (Mini / LBE-1425)
 ```
 
 ### Examples

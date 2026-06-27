@@ -63,17 +63,23 @@ The vendor UI exposes three; the field accepts the full u-blox enum:
 
 ### `0x03` SET_GNSS bitmask (payload byte 1)
 
+The mask is `bit = 1 << u-blox gnssId`:
+
 | bit | mask | constellation |
 |-----|------|---------------|
 | 0   | 0x01 | GPS           |
 | 1   | 0x02 | SBAS          |
 | 2   | 0x04 | Galileo       |
 | 3   | 0x08 | BeiDou        |
+| 4   | 0x10 | IMES          |
+| 5   | 0x20 | QZSS          |
 | 6   | 0x40 | GLONASS       |
 
-Bits 4/5 (0x10/0x20) likely QZSS/IMES — not toggled in the capture, unconfirmed.
-e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x00` = all off. Decoded from a live
-off-one-at-a-time / on-in-reverse sweep of the vendor UI's constellation checkboxes.
+GPS/SBAS/Gal/BeiDou/GLONASS decoded from the vendor UI sweep; **QZSS (0x20)
+confirmed** by setting `--gnss 0x67` vs `0x47` and reading back UBX-CFG-GNSS
+(QZSS appears/disappears accordingly) — even though the vendor UI has no QZSS
+control. IMES (0x10) follows the same `1<<gnssId` mapping (not separately
+exercised). e.g. `0x47` = GPS+SBAS+Galileo+GLONASS; `0x67` adds QZSS.
 
 **Valid-mask constraint** (u-blox concurrent-GNSS rule, enforced by the UI/firmware):
 the GPS/SBAS/Galileo group (`0x01|0x02|0x04`) is **mutually exclusive** with

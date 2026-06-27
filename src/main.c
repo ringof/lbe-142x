@@ -67,7 +67,7 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1425) {
 		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
-		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 GLONASS=0x40)%s\n",
+		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --dynmodel <model>     Set u-blox dynamic model"
 		       " (portable|stationary|pedestrian|automotive|sea|airborne)%s\n",
