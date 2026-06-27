@@ -158,7 +158,7 @@ void print_usage(int model, int is_1425) {
 
 int main(int argc, char *argv[]) {
 	struct lbe_device *dev;
-	struct lbe_status status;
+	struct lbe_status status = {0};   /* zero so the unwritten report tail is defined */
 	enum lbe_model model;
 	int changed = 0;
 	uint16_t preferred_pid = 0;
@@ -480,7 +480,7 @@ int main(int argc, char *argv[]) {
 				payload[pn++] = (uint8_t)v;
 				i++;
 			}
-			struct lbe_status before, after;
+			struct lbe_status before = {0}, after = {0};
 			if (lbe_get_device_status(dev, &before) != 0) {
 				fprintf(stderr, "  baseline status read failed\n");
 				continue;
