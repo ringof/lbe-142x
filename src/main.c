@@ -383,6 +383,8 @@ int main(int argc, char *argv[]) {
 					default: dm = "?"; break;
 					}
 					printf("  Dynamic model: %s (%u)\n", dm, status.raw[22]);
+					printf("  NMEA output: %s\n",
+					       status.raw[24] ? "Enabled" : "Disabled");
 				}
 			}
 		} else if (strcmp(argv[i], "--statlog") == 0) {

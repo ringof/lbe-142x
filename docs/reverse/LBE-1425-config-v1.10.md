@@ -113,7 +113,7 @@ Same layout as the 1421 status report for the documented fields:
 | 21     | GNSS mask       | tracks `--gnss` |
 | 22     | dynModel        | `0x02` Stationary |
 | 23     | antenna current | mA (see below)  |
-| 24     | flag (unknown)  | `0x00`/`0x01`   |
+| 24     | NMEA output enable | `0x00`/`0x01` |
 | 25..   | padding         | `FF…`           |
 
 Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). The tail
@@ -130,8 +130,12 @@ bytes (21-24), once thought to be opaque telemetry, decode by watching them live
   antenna-presence detection the single ANT *short* bit can't: 0 = open/none,
   nonzero = connected, short = ANT bit clears. Surfaced in `--status` as
   `Antenna: Not connected (0 mA)` / `OK (N mA)` / `Short Circuit`.
-- **byte 24** stays `0x01` (here) / `0x00` (original capture); not yet decoded.
-  Did not change across a GPS lock transition, so it is not a fix flag.
+- **byte 24 = NMEA output enable** — confirmed by toggling `--nmea` (`0`→`0x00`,
+  `1`→`0x01`). The `0x00` in the original vendor capture was just NMEA off.
+
+The full tail is decoded: it's a live config + status echo {GNSS mask, dynModel,
+antenna current, NMEA enable}, not the opaque telemetry first assumed. `--status`
+surfaces all of it on the 1425.
 
 ## Diagnostics channel: UBX over EP 0x83 (confirmed)
 
