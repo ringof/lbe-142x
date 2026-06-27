@@ -46,8 +46,8 @@ set ylabel "time accuracy tAcc (ns)"
 # instead of collapsing to an empty range (a locked GPSDO can pin tAcc at e.g.
 # 4 ns). tight=1 instead zooms y to the data band (+/-1 ns margin, computed in
 # the loop) to magnify structure like tAcc dithering 3<->4 ns; the margin keeps
-# a dead-flat lock from collapsing the range.
-if (!exists("tight")) { set yrange [0:*] }
+# a dead-flat lock from collapsing the range. (The display y-range is set inside
+# the loop, after the stats, so it can't clip them.)
 set grid
 set key outside top center horizontal
 
@@ -56,13 +56,19 @@ set key outside top center horizontal
 # empty/just-started file is harmless. (A while loop, not the deprecated
 # `reread`.)
 while (1) {
+	# stats honour BOTH active ranges, so reset them to autoscale before any
+	# stats -- otherwise last frame's display window clips this frame's stats
+	# and newly appended samples (e.g. tAcc settling out of the old y-band) read
+	# as "all points out of range" and the view never advances. Display ranges
+	# are (re)set further down, after every stats call, just before plot.
+	set xrange [*:*]
+	set yrange [*:*]
 	stats csv using 1 nooutput
 	if (exists("STATS_records") && STATS_records >= 2) {
 		xhi = STATS_max
 		# fromstart: anchor the left edge at the first sample (whole run grows
 		# rightward). Otherwise slide a `window`-second window with the data.
 		if (exists("fromstart")) { xlo = STATS_min } else { xlo = xhi - window }
-		set xrange [xlo : xhi]
 		# tight: zoom y to the tAcc band within the visible window (named stats
 		# "Y" so it can't clobber the x stats above); +/-1 ns margin keeps a
 		# dead-flat lock from collapsing to an empty range. Sentinels (-1) and
@@ -72,8 +78,13 @@ while (1) {
 			if (exists("Y_records") && Y_records >= 1) {
 				ylo = (Y_min - 1 < 0) ? 0 : Y_min - 1
 				set yrange [ylo : Y_max + 1]
+			} else {
+				set yrange [0:*]   # no valid tAcc in view yet: safe default
 			}
+		} else {
+			set yrange [0:*]   # default: 0-based
 		}
+		set xrange [xlo : xhi]   # display window, after all stats are computed
 		plot \
 		  csv using 1:($9==0 && $8==1 && $4>=0 ? $4 : 1/0) \
 		       with linespoints lc rgb "#1f77b4" pt 7 ps 0.6 title "tAcc (trusted)", \
