@@ -6,6 +6,7 @@ on:
      - 'v*'
  pull_request:
    branches: [ main ]
+ workflow_dispatch:
 jobs:
  build-windows:
    # Pin to windows-2022: the windows-latest image (now Server 2025) breaks the
