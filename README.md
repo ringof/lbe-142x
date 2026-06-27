@@ -118,6 +118,7 @@ Options:
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
   --statlog              Poll status ~1 Hz, log lock state + raw report tail (LBE-142x)
+  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced) (LBE-142x)
   --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423/1425: NMEA via CDC)
   --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423/1425)
   --gps-info             Print u-blox GPS module version + antenna status (Mini / LBE-1425)

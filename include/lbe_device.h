@@ -57,6 +57,12 @@ uint16_t lbe_get_pid(struct lbe_device* dev);
  * a serial was available, -1 otherwise (out is set empty). */
 int lbe_get_serial(struct lbe_device* dev, char* out, size_t n);
 
+/* Reverse-engineering helper: send an arbitrary feature-report command
+ * (opcode in byte 0, payload from byte 1). For probing untested opcodes on the
+ * 1420/1421-family wire format. Returns 0 on success. */
+int lbe_send_raw(struct lbe_device* dev, uint8_t opcode,
+                 const uint8_t* payload, size_t n);
+
 /* Maximum settable frequency in Hz for the given output (1 or 2). Most
  * models are symmetric, but the LBE-1425 caps OUT1 at 800 MHz while OUT2
  * reaches 1.4 GHz, so callers must validate per output rather than using

@@ -13,6 +13,24 @@
 
 #define MODEL_GENERIC (-1)
 
+/* Friendly name for the status-report bytes the decoder understands, used by
+ * --probe-op to annotate which field an opcode touched. NULL if unknown. */
+static const char *status_byte_name(int off) {
+	switch (off) {
+	case 1:  return "status bits";
+	case 6: case 7: case 8: case 9:     return "OUT1 frequency";
+	case 14: case 15: case 16: case 17: return "OUT2 frequency";
+	case 18: return "PLL/FLL mode";
+	case 19: return "OUT1 power";
+	case 20: return "OUT2 power";
+	case 21: return "GNSS mask";
+	case 22: return "dynModel";
+	case 23: return "antenna mA";
+	case 24: return "NMEA enable";
+	default: return NULL;
+	}
+}
+
 void print_usage(int model, int is_1425) {
 	int generic = (model == MODEL_GENERIC);
 	int is_1420 = (model == LBE_1420);
@@ -87,6 +105,10 @@ void print_usage(int model, int is_1425) {
 
 	if (generic || is_1421)
 		printf("  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
+		       generic ? " (LBE-142x)" : "");
+
+	if (generic || is_1421)
+		printf("  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)%s\n",
 		       generic ? " (LBE-142x)" : "");
 
 	if (generic || is_mini || is_1421) {
@@ -411,6 +433,58 @@ int main(int argc, char *argv[]) {
 				}
 				lbe_sleep_ms(1000);
 			}
+			changed = 1;
+		} else if (strcmp(argv[i], "--probe-op") == 0) {
+			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
+			 * and report which status-report bytes it changed. */
+			if (model != LBE_1421_DUALOUT) {
+				fprintf(stderr, "--probe-op needs the 1421-family status report\n");
+				continue;
+			}
+			if (i + 1 >= argc) {
+				fprintf(stderr, "usage: --probe-op <0xNN> [b1 b2 ...]\n");
+				continue;
+			}
+			uint8_t op = (uint8_t)strtoul(argv[++i], NULL, 0);
+			uint8_t payload[59];
+			size_t pn = 0;
+			while (i + 1 < argc && pn < sizeof payload) {
+				char *end;
+				unsigned long v = strtoul(argv[i + 1], &end, 0);
+				if (argv[i + 1][0] == '\0' || *end != '\0' || v > 0xFF) break;
+				payload[pn++] = (uint8_t)v;
+				i++;
+			}
+			struct lbe_status before, after;
+			if (lbe_get_device_status(dev, &before) != 0) {
+				fprintf(stderr, "  baseline status read failed\n");
+				continue;
+			}
+			printf("Probing opcode 0x%02X", op);
+			for (size_t k = 0; k < pn; k++) printf(" %02X", payload[k]);
+			printf(" ...\n");
+			if (lbe_send_raw(dev, op, payload, pn) != 0) {
+				fprintf(stderr, "  send failed\n");
+				continue;
+			}
+			lbe_sleep_ms(50);
+			if (lbe_get_device_status(dev, &after) != 0) {
+				fprintf(stderr, "  follow-up status read failed\n");
+				continue;
+			}
+			int any = 0;
+			for (int b = 0; b < 60; b++) {
+				if (before.raw[b] == after.raw[b]) continue;
+				const char *nm = status_byte_name(b);
+				if (nm)
+					printf("  byte %2d: 0x%02X -> 0x%02X  (%s)\n",
+					       b, before.raw[b], after.raw[b], nm);
+				else
+					printf("  byte %2d: 0x%02X -> 0x%02X\n",
+					       b, before.raw[b], after.raw[b]);
+				any = 1;
+			}
+			if (!any) printf("  no status change\n");
 			changed = 1;
 		} else if (strcmp(argv[i], "--monitor") == 0) {
 			/* Let the shared monitor impl render the real model in its

@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct lbe_device {
 	struct lbe_transport *transport;
@@ -79,6 +80,19 @@ uint16_t lbe_get_pid(struct lbe_device *dev) {
 
 int lbe_get_serial(struct lbe_device *dev, char *out, size_t n) {
 	return lbe_transport_serial(dev->transport, out, n);
+}
+
+int lbe_send_raw(struct lbe_device *dev, uint8_t opcode,
+                 const uint8_t *payload, size_t n) {
+	/* Same wire convention the model code uses: opcode in byte 0 (and as the
+	 * HID report id), payload from byte 1. For probing untested opcodes. */
+	uint8_t buf[LBE_REPORT_SIZE] = {0};
+	buf[0] = opcode;
+	if (payload && n) {
+		if (n > LBE_REPORT_SIZE - 1) n = LBE_REPORT_SIZE - 1;
+		memcpy(&buf[1], payload, n);
+	}
+	return lbe_transport_feat_set(dev->transport, opcode, buf);
 }
 
 uint32_t lbe_max_freq(struct lbe_device *dev, int output) {
