@@ -31,6 +31,36 @@ static const char *status_byte_name(int off) {
 	}
 }
 
+/* Single source of truth for the u-blox CFG-NAV5 dynamic platform model
+ * (value <-> name). `token` is the lowercase CLI keyword (NULL = settable by
+ * numeric value only, matching the vendor UI, which exposes no name for it);
+ * `display` is the label shown by --status. */
+static const struct { uint8_t value; const char *token; const char *display; } DYNMODEL[] = {
+	{0, "portable",   "Portable"},
+	{2, "stationary", "Stationary"},
+	{3, "pedestrian", "Pedestrian"},
+	{4, "automotive", "Automotive"},
+	{5, "sea",        "Sea"},
+	{6, NULL,         "Airborne<1g"},
+	{7, NULL,         "Airborne<2g"},
+	{8, "airborne",   "Airborne<4g"},
+};
+
+/* Build the "portable|stationary|..." keyword list (the settable-by-name
+ * models) once, for the --help text and the --dynmodel error message. Returns
+ * buf. */
+static const char *dynmodel_token_list(char *buf, size_t n) {
+	size_t off = 0;
+	for (size_t i = 0; i < sizeof DYNMODEL / sizeof DYNMODEL[0]; i++) {
+		if (!DYNMODEL[i].token) continue;
+		int w = snprintf(buf + off, n - off, "%s%s",
+		                 off ? "|" : "", DYNMODEL[i].token);
+		if (w < 0 || (size_t)w >= n - off) break;
+		off += (size_t)w;
+	}
+	return buf;
+}
+
 void print_usage(int model, int is_1425) {
 	int generic = (model == MODEL_GENERIC);
 	int is_1420 = (model == LBE_1420);
@@ -91,8 +121,9 @@ void print_usage(int model, int is_1425) {
 		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
 		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
 		       generic ? " (LBE-1425 only)" : "");
-		printf("  --dynmodel <model>     Set u-blox dynamic model"
-		       " (portable|stationary|pedestrian|automotive|sea|airborne)%s\n",
+		char dm_tokens[96];
+		printf("  --dynmodel <model>     Set u-blox dynamic model (%s)%s\n",
+		       dynmodel_token_list(dm_tokens, sizeof dm_tokens),
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --nmea <0|1>           Enable or disable NMEA output%s\n",
 		       generic ? " (LBE-1425 only)" : "");
@@ -294,20 +325,20 @@ int main(int argc, char *argv[]) {
 			if (i + 1 < argc) {
 				const char *a = argv[++i];
 				int dynmodel = -1;
-				if      (strcmp(a, "portable") == 0)   dynmodel = 0;
-				else if (strcmp(a, "stationary") == 0) dynmodel = 2;
-				else if (strcmp(a, "pedestrian") == 0) dynmodel = 3;
-				else if (strcmp(a, "automotive") == 0) dynmodel = 4;
-				else if (strcmp(a, "sea") == 0)        dynmodel = 5;
-				else if (strcmp(a, "airborne") == 0)   dynmodel = 8;
-				else {
+				for (size_t k = 0; k < sizeof DYNMODEL / sizeof DYNMODEL[0]; k++)
+					if (DYNMODEL[k].token && strcmp(a, DYNMODEL[k].token) == 0) {
+						dynmodel = DYNMODEL[k].value;
+						break;
+					}
+				if (dynmodel < 0) {   /* not a keyword -- try a raw u-blox value */
 					char *end;
 					unsigned long v = strtoul(a, &end, 0);
 					if (*end == '\0' && v <= 0xFF) dynmodel = (int)v;
 				}
 				if (dynmodel < 0) {
-					fprintf(stderr, "Invalid dynamic model: %s (portable|stationary|"
-					        "pedestrian|automotive|sea|airborne or a u-blox value)\n", a);
+					char dm_tokens[96];
+					fprintf(stderr, "Invalid dynamic model: %s (%s or a u-blox value)\n",
+					        a, dynmodel_token_list(dm_tokens, sizeof dm_tokens));
 				} else if (lbe_set_dynmodel(dev, (uint8_t)dynmodel) == 0) {
 					printf("  Set dynamic model to %d\n", dynmodel);
 					changed = 1;
@@ -395,18 +426,12 @@ int main(int argc, char *argv[]) {
 							first = 0;
 						}
 					printf("%s)\n", first ? "none" : "");
-					const char *dm;
-					switch (status.raw[22]) {
-					case 0:  dm = "Portable"; break;
-					case 2:  dm = "Stationary"; break;
-					case 3:  dm = "Pedestrian"; break;
-					case 4:  dm = "Automotive"; break;
-					case 5:  dm = "Sea"; break;
-					case 6:  dm = "Airborne<1g"; break;
-					case 7:  dm = "Airborne<2g"; break;
-					case 8:  dm = "Airborne<4g"; break;
-					default: dm = "?"; break;
-					}
+					const char *dm = "?";
+					for (size_t k = 0; k < sizeof DYNMODEL / sizeof DYNMODEL[0]; k++)
+						if (DYNMODEL[k].value == status.raw[22]) {
+							dm = DYNMODEL[k].display;
+							break;
+						}
 					printf("  Dynamic model: %s (%u)\n", dm, status.raw[22]);
 					printf("  NMEA output: %s\n",
 					       status.raw[24] ? "Enabled" : "Disabled");
