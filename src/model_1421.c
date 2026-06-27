@@ -334,9 +334,14 @@ static int m1425_diag(struct lbe_transport *t) {
 				gnss_draw("LBE-1425 GPS Diagnostics", &pvt, &sv, -1);
 				if (clk.valid) {
 					printf("\nClock:  bias=%+d ns  drift=%+d ns/s  "
-					       "tAcc=%u ns  fAcc=%u ps/s\033[K\n\033[J",
+					       "tAcc=%u ns  fAcc=%u ps/s\033[K\n",
 					       clk.clkb_ns, clk.clkd_nsps, clk.tacc_ns, clk.facc_ps);
+				} else {
+					printf("\nClock:  (no solution yet)\033[K\n");
 				}
+				/* Always erase below the last row so a shrinking satellite
+				 * list (e.g. when signal drops) doesn't leave stale lines. */
+				printf("\033[J");
 				fflush(stdout);
 			}
 		}
