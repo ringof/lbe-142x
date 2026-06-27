@@ -1,2 +1,5 @@
 # Captured binary test fixtures -- never apply line-ending translation.
 tests/fixtures/*.bin binary
+
+# Documentation image assets.
+*.png binary

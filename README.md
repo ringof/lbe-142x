@@ -255,6 +255,14 @@ plot how the GPS timing solution behaves over time (e.g. `tAcc` settling as a
 fix is acquired). It reads the same EP 0x83 diagnostics stream as `--diag` (no
 `usbmon`/`sudo`). Output is line-buffered, so it pipes/redirects live:
 
+![LBE-1425 clocklog plot](docs/clocklog_demo.png)
+
+*A real ~32-minute bench run (`scripts/clocklog_plot.gp`). Two antenna events:
+each fix-loss dropout is greyed as untrusted (`valid=0`), then a trusted `tAcc`
+spike on reacquisition (746 ns / 598 ns) settles back to ~10 ns; `fAcc` on the
+right axis tracks it. No gaps — the USB stream stayed clean, so the events show
+as untrusted regions rather than missing seconds.*
+
 ```
 ./lbe-142x --pid 0x2269 --clocklog            # until Ctrl-C
 ./lbe-142x --pid 0x2269 --clocklog 300        # run for 300 s
