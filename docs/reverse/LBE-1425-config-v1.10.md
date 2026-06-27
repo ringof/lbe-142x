@@ -87,6 +87,14 @@ BeiDou (`0x08`) — you get one group or the other, not both. GLONASS (`0x40`) m
 be combined with either, with no restriction. A `--gnss` CLI flag should reject
 masks that set BeiDou together with any of GPS/SBAS/Galileo.
 
+**Opcode space mapped.** Every documented opcode `0x01`-`0x0F` is accounted for
+above. The LBE-1420-only `0x07` (SET_PWR1) is **ignored** on the 1425 (no
+status change for either arg). A sweep of `0x10`-`0x2F` via `--probe-op` (send
+opcode, diff the full status report) produced **no status change** for any --
+so there are no undocumented status-affecting opcodes. (Caveat: `--probe-op`
+only observes status-echoed effects; a purely physical/GPS-side opcode would not
+show, but the one such channel, the `0x08` UBX wrap, is already known.)
+
 `0x08` is issued repeatedly by the GUI (3 distinct sub-selectors cycling) and is
 almost certainly how the vendor app reads the extended "increased stability"
 telemetry. The `[6]` byte (0x07/0x22/0x35) likely selects what to read.
