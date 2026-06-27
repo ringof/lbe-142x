@@ -120,9 +120,11 @@ Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). The tail
 bytes (21-24), once thought to be opaque telemetry, decode by watching them live
 (`--statlog`):
 
-- **byte 21 = GNSS constellation mask** — moves exactly with `--gnss` (e.g.
-  `0x47` ↔ `0x67` when QZSS toggles).
-- **byte 22 = u-blox dynamic model** (`0x02` = Stationary, the default).
+- **byte 21 = GNSS constellation mask** — directly confirmed by sweeping
+  `--gnss` (0x01→GPS, 0x40→GLONASS, 0x21→GPS+QZSS, 0x47→…), reads back exactly.
+- **byte 22 = u-blox dynamic model** — directly confirmed by sweeping
+  `--dynmodel` (0=Portable, 2=Stationary, 3=Pedestrian, 4=Automotive, 8=Airborne).
+  Both are shown in `--status` (`GNSS:` / `Dynamic model:` lines).
 - **byte 23 = measured antenna bias current (mA).** 0 with no antenna; ~5 mA on
   one patch, ~11–12 mA (jittering ±1, ADC noise) on another. This gives true
   antenna-presence detection the single ANT *short* bit can't: 0 = open/none,
