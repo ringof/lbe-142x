@@ -15,6 +15,43 @@ int ubx_checksum_ok(const uint8_t *msg, size_t total) {
 	return ca == msg[total - 2] && cb == msg[total - 1];
 }
 
+int ubx_next(const uint8_t *buf, size_t len, size_t *off,
+             uint8_t *cls, uint8_t *id, const uint8_t **payload, uint16_t *plen,
+             struct ubx_scan_stats *st) {
+	size_t i = *off;
+	while (i + 8 <= len) {
+		if (buf[i] != 0xB5 || buf[i + 1] != 0x62) {
+			if (st) {
+				if (buf[i] == 0x00 || buf[i] == 0xFF) st->pad_skips++;
+				else                                  st->resyncs++;
+			}
+			i++;
+			continue;
+		}
+		uint16_t ubx_len = (uint16_t)(buf[i + 4] | (buf[i + 5] << 8));
+		if (ubx_len > UBX_MAX_PAYLOAD) {        /* implausible length -> resync */
+			if (st) st->resyncs++;
+			i++;
+			continue;
+		}
+		size_t total = (size_t)8 + ubx_len;
+		if (i + total > len) break;             /* incomplete -- wait for more */
+		if (!ubx_checksum_ok(&buf[i], total)) {
+			if (st) { st->ck_fails++; st->resyncs++; }
+			i++;
+			continue;
+		}
+		*cls     = buf[i + 2];
+		*id      = buf[i + 3];
+		*payload = &buf[i + 6];
+		*plen    = ubx_len;
+		*off     = i + total;
+		return 1;
+	}
+	*off = i;
+	return 0;
+}
+
 void ubx_parse_pvt(const uint8_t *p, int n, struct gnss_pvt *pvt) {
 	if (n < 92) return;
 	pvt->year     = (uint16_t)(p[4] | (p[5] << 8));
@@ -94,30 +131,23 @@ int ubx_consume(uint8_t *buf, size_t *buf_len, size_t buf_cap,
 	*buf_len += in_len;
 
 	int pvt_updates = 0;
-	size_t i = 0;
-	while (i + 8 <= *buf_len) {
-		if (buf[i] != 0xB5 || buf[i + 1] != 0x62) { i++; continue; }
-		uint16_t ubx_len = (uint16_t)(buf[i + 4] | (buf[i + 5] << 8));
-		if (ubx_len > 512) { i++; continue; }
-		size_t total = (size_t)8 + ubx_len;
-		if (i + total > *buf_len) break;   /* message spans into next frame */
-		if (!ubx_checksum_ok(&buf[i], total)) { i++; continue; }
-
-		uint8_t cls = buf[i + 2], id = buf[i + 3];
-		const uint8_t *p = &buf[i + 6];
+	size_t off = 0;
+	uint8_t cls, id;
+	const uint8_t *p;
+	uint16_t plen;
+	while (ubx_next(buf, *buf_len, &off, &cls, &id, &p, &plen, NULL)) {
 		if (cls == 0x01 && id == 0x07 && pvt) {
-			ubx_parse_pvt(p, ubx_len, pvt);
+			ubx_parse_pvt(p, plen, pvt);
 			if (pvt->valid) pvt_updates++;
 		} else if (cls == 0x01 && id == 0x35 && sv) {
-			ubx_parse_sat(p, ubx_len, sv);
+			ubx_parse_sat(p, plen, sv);
 		} else if (cls == 0x01 && id == 0x22 && clk) {
-			ubx_parse_clock(p, ubx_len, clk);
+			ubx_parse_clock(p, plen, clk);
 		}
-		i += total;
 	}
-	if (i > 0) {
-		memmove(buf, buf + i, *buf_len - i);
-		*buf_len -= i;
+	if (off > 0) {
+		memmove(buf, buf + off, *buf_len - off);
+		*buf_len -= off;
 	}
 	return pvt_updates;
 }

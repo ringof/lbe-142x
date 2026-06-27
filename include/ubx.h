@@ -24,6 +24,30 @@ struct ubx_clock {
 	uint32_t facc_ps;    /* frequency accuracy estimate (ps/s) */
 };
 
+/* Largest UBX payload treated as plausible while scanning; a longer length
+ * field is garbage and triggers a resync. Covers MON-VER + extensions and
+ * NAV-SAT with many satellites. */
+#define UBX_MAX_PAYLOAD 1024
+
+/* Optional per-scan counters (pass NULL to ignore). Used by the Mini monitor's
+ * frame-health display; the other callers pass NULL. */
+struct ubx_scan_stats {
+	uint32_t resyncs;    /* non-padding garbage bytes scanned past */
+	uint32_t ck_fails;   /* Fletcher-8 mismatches */
+	uint32_t pad_skips;  /* 0x00 / 0xFF inter-message padding scanned past */
+};
+
+/* Extract the next complete, checksum-valid UBX message from buf[*off .. len).
+ * On success sets cls/id/payload/plen, advances *off past the message, and
+ * returns 1. Returns 0 when no further complete message is present, leaving
+ * *off at the first unconsumed byte (start of a partial message, or the scan
+ * position) so the caller can memmove the remainder to the front. `st` may be
+ * NULL. This is the single B5/62 + length + Fletcher-8 scanner shared by
+ * ubx_consume() and the per-model MON-VER / CFG-GNSS / antenna probes. */
+int ubx_next(const uint8_t *buf, size_t len, size_t *off,
+             uint8_t *cls, uint8_t *id, const uint8_t **payload, uint16_t *plen,
+             struct ubx_scan_stats *st);
+
 /* Fletcher-8 checksum over a full UBX frame (sync..payload..ck), total bytes.
  * Returns 1 if the two trailing checksum bytes match. */
 int ubx_checksum_ok(const uint8_t *msg, size_t total);

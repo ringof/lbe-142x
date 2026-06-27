@@ -430,16 +430,11 @@ static int m1425_gps_info(struct lbe_transport *t) {
 		memcpy(buf + buf_len, r + 2, payload);
 		buf_len += payload;
 
-		size_t i = 0;
-		while (i + 8 <= buf_len) {
-			if (buf[i] != 0xB5 || buf[i + 1] != 0x62) { i++; continue; }
-			size_t ul = (size_t)(buf[i + 4] | (buf[i + 5] << 8));
-			if (ul > 1024) { i++; continue; }
-			size_t total = 8 + ul;
-			if (i + total > buf_len) break;
-			if (!ubx_checksum_ok(&buf[i], total)) { i++; continue; }
-			uint8_t cls = buf[i + 2], id = buf[i + 3];
-			const uint8_t *p = &buf[i + 6];
+		size_t off = 0;
+		uint8_t cls, id;
+		const uint8_t *p;
+		uint16_t ul;
+		while (ubx_next(buf, buf_len, &off, &cls, &id, &p, &ul, NULL)) {
 			if (cls == 0x0A && id == 0x04 && ul >= 40 && !got_ver) {
 				printf("  SW version : %.30s\n", (const char *)p);
 				printf("  HW version : %.10s\n", (const char *)(p + 30));
@@ -468,9 +463,8 @@ static int m1425_gps_info(struct lbe_transport *t) {
 				printf("\n");
 				got_gnss = 1;
 			}
-			i += total;
 		}
-		if (i > 0) { memmove(buf, buf + i, buf_len - i); buf_len -= i; }
+		if (off > 0) { memmove(buf, buf + off, buf_len - off); buf_len -= off; }
 	}
 
 	/* Turn the MON-HW / MON-RF streams back off (rate 0). */
