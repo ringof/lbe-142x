@@ -302,11 +302,28 @@ The repo ships two gnuplot scripts (gnuplot only — no matplotlib). They draw
 trusted `tAcc` as a connected line, untrusted samples in grey, gaps as red
 markers with the line **broken** across them, and drop `-1` sentinels.
 
-Live strip chart (qt window, or ASCII in-terminal for SSH/no-X):
+**Want the pretty (windowed) plots?** You need a gnuplot built with an
+interactive terminal (`qt`, `wxt`, or `x11`). The scripts auto-pick whichever
+is present and fall back to in-terminal ASCII otherwise — so a minimal build
+(e.g. `gnuplot-nox`, or some conda `base` installs) still works, just in ASCII.
+To check, run `gnuplot -e "print GPVAL_TERMINALS"` and look for `qt`/`wxt`/`x11`.
+To get a GUI terminal:
+
+- Debian/Ubuntu: `sudo apt install gnuplot-qt` (the `gnuplot` metapackage pulls
+  this in; `gnuplot-nox` does not).
+- Fedora: `sudo dnf install gnuplot` (includes the qt terminal).
+- macOS (Homebrew): `brew install gnuplot --with-qt`, or `brew install gnuplot`
+  (recent bottles include qt).
+- conda: `conda install -c conda-forge gnuplot` ships qt; if your `base`
+  gnuplot is ASCII-only, `conda deactivate` to fall back to the system one.
+
+ASCII (`dumb=1`) needs nothing extra and is the right choice over SSH / headless.
+
+Live strip chart (GUI window if available, or ASCII in-terminal for SSH/no-X):
 
 ```
 ./lbe-142x --pid 0x2269 --clocklog >> run.csv &
-gnuplot -e "csv='run.csv'" scripts/clocklog_live.gp                 # qt window
+gnuplot -e "csv='run.csv'" scripts/clocklog_live.gp                 # GUI window
 gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp         # ASCII
 # options: window=<seconds> (default 120), refresh=<seconds> (default 1)
 ```
@@ -314,7 +331,7 @@ gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp         # ASCII
 Static plot of a finished log:
 
 ```
-gnuplot -p -e "csv='run.csv'" scripts/clocklog_plot.gp              # window
+gnuplot -e "csv='run.csv'" scripts/clocklog_plot.gp                 # GUI window
 gnuplot -e "csv='run.csv'; out='run.png'" scripts/clocklog_plot.gp  # PNG
 gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_plot.gp         # ASCII
 ```
