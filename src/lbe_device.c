@@ -196,6 +196,14 @@ int lbe_gps_info(struct lbe_device *dev) {
 	return dev->ops->gps_info(dev->transport);
 }
 
+int lbe_clocklog(struct lbe_device *dev, int seconds) {
+	if (!dev->ops->clocklog) {
+		fprintf(stderr, "--clocklog is not supported on this model\n");
+		return -1;
+	}
+	return dev->ops->clocklog(dev->transport, seconds);
+}
+
 int lbe_rawdump(struct lbe_device *dev, uint8_t ep, int duration_ms) {
 	lbe_transport_claim(dev->transport);
 	int elapsed = 0;

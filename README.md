@@ -37,6 +37,7 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 - `--dynmodel <model>` — u-blox dynamic platform model (`portable|stationary|pedestrian|automotive|sea|airborne`, or a raw u-blox value)
 - `--nmea <0|1>` — enable/disable the NMEA output stream
 - `--diag` — live UBX diagnostics: per-SV CNR histogram (NAV-SAT) plus a clock-disciplining line (NAV-CLOCK: bias, drift, time/frequency accuracy), parsed from the EP 0x83 stream
+- `--clocklog [seconds]` — CSV time series of the NAV-CLOCK timing telemetry (bias, drift, time/frequency accuracy) for plotting how the GPS timing solution behaves over time; honesty-gated (see [Timing time series](#timing-time-series-clocklog))
 - `--gps-info` — u-blox module version (UBX-MON-VER), antenna status, and the constellations the receiver actually has enabled (UBX-CFG-GNSS)
 - `--status` additionally reports the **antenna bias current** — so it distinguishes "no antenna" (0 mA) from "OK" from "short", which the single short-circuit bit can't — plus the live GNSS mask, dynamic model and NMEA-output state
 
@@ -115,6 +116,7 @@ Options:
   --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
   --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
   --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1425 only)
+  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting (Ctrl-C, or run N s) (LBE-1425 only)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
   --statlog              Poll status ~1 Hz, log lock state + raw report tail (LBE-142x)
@@ -244,6 +246,123 @@ Stream: lines=120 bad_ck=1  port=COM12
 ```
 Measurement precision is bounded by the OS millisecond clock resolution (`GetTickCount` ~15 ms on Windows, `CLOCK_MONOTONIC` ~1 ms on Linux) and the ~20 ms polling cadence.
 For metrology-grade PPS timing, an external capture method is required.
+
+## Timing time series (clocklog)
+
+`--clocklog [seconds]` (LBE-1425) streams a CSV time series of the receiver's
+UBX **NAV-CLOCK** timing telemetry — one row per solution (~1 Hz) — so you can
+plot how the GPS timing solution behaves over time (e.g. `tAcc` settling as a
+fix is acquired). It reads the same EP 0x83 diagnostics stream as `--diag` (no
+`usbmon`/`sudo`). Output is line-buffered, so it pipes/redirects live:
+
+```
+./lbe-142x --pid 0x2269 --clocklog            # until Ctrl-C
+./lbe-142x --pid 0x2269 --clocklog 300        # run for 300 s
+./lbe-142x --pid 0x2269 --clocklog >> run.csv # log to a file (append)
+```
+
+> **Scope:** NAV-CLOCK is the u-blox receiver's *self-reported* clock solution,
+> **not** an independent measurement of the disciplined OUT1/OUT2 output (that
+> needs an external counter/reference). The tool reports the receiver's honest
+> self-report with every detectable artifact flagged.
+
+CSV columns (a leading `#` comment carries the header + the scope caveat):
+
+```
+iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap
+```
+
+| column | meaning |
+|--------|---------|
+| `iTOW_s`   | u-blox GPS time-of-week (s) — the authoritative time axis |
+| `clkB_ns`  | receiver clock bias (ns) |
+| `clkD_nsps`| receiver clock drift (ns/s) |
+| `tAcc_ns`  | time accuracy estimate (ns); `-1` = unknown |
+| `fAcc_pss` | frequency accuracy estimate (ps/s); `-1` = unknown |
+| `fixType`  | 0 none, 2 2D, 3 3D |
+| `numSV`    | satellites used |
+| `valid`    | 1 only if trustworthy: a ≥2D fix **and** non-sentinel accuracies |
+| `gap`      | 1 if a NAV-CLOCK second was missed just before this row |
+
+**Honesty guarantees** (so host/OS/USB/firmware/receiver artifacts can't
+masquerade as good data):
+
+- The time axis is the u-blox `iTOW`, never host arrival time (immune to USB /
+  scheduler jitter).
+- A non-advancing `iTOW` (stale/duplicate frame) is dropped; an `iTOW` step ≠ 1 s
+  is recorded as an explicit `gap` and **never** interpolated across.
+- Corrupt frames are dropped by the UBX checksum, so they can't fake a reading.
+- Unknown accuracies (`0xFFFFFFFF`) are emitted as `-1`, never as `4294967295`.
+- Untrusted samples (no fix / unknown accuracy) carry `valid=0` so they render
+  distinctly rather than being silently treated as good.
+
+### Plotting with gnuplot
+
+The repo ships two gnuplot scripts (gnuplot only — no matplotlib). They draw
+trusted `tAcc` as a connected line, untrusted samples in grey, gaps as red
+markers with the line **broken** across them, and drop `-1` sentinels.
+
+**Want the pretty (windowed) plots?** You need a gnuplot built with an
+interactive terminal (`qt`, `wxt`, or `x11`). The scripts auto-pick whichever
+is present and fall back to in-terminal ASCII otherwise — so a minimal build
+(e.g. `gnuplot-nox`, or some conda `base` installs) still works, just in ASCII.
+To check, run `gnuplot -e "print GPVAL_TERMINALS"` and look for `qt`/`wxt`/`x11`.
+To get a GUI terminal:
+
+- Debian/Ubuntu: `sudo apt install gnuplot-qt` (the `gnuplot` metapackage pulls
+  this in; `gnuplot-nox` does not).
+- Fedora: `sudo dnf install gnuplot` (includes the qt terminal).
+- macOS (Homebrew): `brew install gnuplot --with-qt`, or `brew install gnuplot`
+  (recent bottles include qt).
+- conda: `conda install -c conda-forge gnuplot` ships qt; if your `base`
+  gnuplot is ASCII-only, `conda deactivate` to fall back to the system one.
+
+ASCII (`dumb=1`) needs nothing extra and is the right choice over SSH / headless.
+
+Live strip chart (GUI window if available, or ASCII in-terminal for SSH/no-X):
+
+```
+./lbe-142x --pid 0x2269 --clocklog >> run.csv &
+gnuplot -e "csv='run.csv'" scripts/clocklog_live.gp                 # GUI window
+gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp         # ASCII
+gnuplot -e "csv='run.csv'; fromstart=1" scripts/clocklog_live.gp    # whole run, no sliding
+gnuplot -e "csv='run.csv'; tight=1" scripts/clocklog_live.gp        # zoom y to the data band
+# options: window=<seconds> (default 120), fromstart (show all from first sample),
+#          tight (zoom y to the data instead of 0-based), refresh=<seconds> (default 1)
+```
+
+`tight=1` is handy once locked: a disciplined 1425 pins `tAcc` near the receiver's
+1 ns reporting floor, so the default 0-based axis shows just a flat low line —
+`tight` zooms y to the data (with a 1 ns margin) to reveal e.g. `tAcc` dithering
+between 3 and 4 ns. It works the same on the static script below.
+
+Static plot of a finished log:
+
+```
+gnuplot -e "csv='run.csv'" scripts/clocklog_plot.gp                 # GUI window
+gnuplot -e "csv='run.csv'; out='run.png'" scripts/clocklog_plot.gp  # PNG
+gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_plot.gp         # ASCII
+```
+
+No device handy? `scripts/sample_clocklog.csv` is a real capture slice you can
+plot immediately — one antenna fix-loss event (baseline lock → grey untrusted
+dropout → ~746 ns reacquisition spike → settle), which shows the trust gating
+and the trusted/untrusted styling at a glance:
+
+```
+gnuplot -e "csv='scripts/sample_clocklog.csv'; dumb=1" scripts/clocklog_plot.gp
+```
+
+Optional one-liner with [`feedgnuplot`](https://github.com/dkogan/feedgnuplot)
+(awk strips the `#` header and emits `iTOW tAcc`; `--domain` makes the first
+column the x-axis):
+
+```
+./lbe-142x --pid 0x2269 --clocklog \
+  | awk -F, '!/^#/{print $1, $4; fflush()}' \
+  | feedgnuplot --domain --lines --stream --xlen 120 \
+                --xlabel 'iTOW (s)' --ylabel 'tAcc (ns)'
+```
 
 ## Troubleshooting
 

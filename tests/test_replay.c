@@ -14,6 +14,8 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef LBE_FIXTURE_DIR
 #define LBE_FIXTURE_DIR "tests/fixtures"
@@ -47,6 +49,80 @@ static int replay(const char *name, struct gnss_pvt *pvt,
 	return updates;
 }
 
+/* Replay a fixture through the clocklog pipeline, exactly as m1425_clocklog
+ * does, collecting per-row honesty stats from the emitted CSV. */
+struct clocklog_replay_stats {
+	int rows;        /* total NAV-CLOCK rows emitted */
+	int valid_rows;  /* rows with the trust-gate valid flag set */
+	int fix3_rows;   /* rows reporting a 3D fix */
+	int gap_rows;    /* rows flagged with an explicit iTOW gap */
+	int itow_monotonic;  /* 1 if iTOW never went backwards */
+};
+
+struct clocklog_replay_ctx {
+	struct clocklog_replay_stats *s;
+	double last_itow;
+};
+
+/* Start of the n-th (0-based) comma-separated field in `row`, or NULL if the
+ * row has fewer fields. (Avoids sscanf, which MSVC /WX rejects as C4996.) */
+static const char *csv_field(const char *row, int n) {
+	const char *p = row;
+	while (n-- > 0) {
+		p = strchr(p, ',');
+		if (!p) return NULL;
+		p++;
+	}
+	return p;
+}
+
+static void clocklog_replay_emit(const char *row, void *vctx) {
+	struct clocklog_replay_ctx *c = (struct clocklog_replay_ctx *)vctx;
+	const char *f_itow = csv_field(row, 0);
+	const char *f_fix  = csv_field(row, 5);
+	const char *f_val  = csv_field(row, 7);
+	const char *f_gap  = csv_field(row, 8);
+	if (!f_itow || !f_fix || !f_val || !f_gap) return;  /* malformed row */
+	double itow = strtod(f_itow, NULL);
+	long fix = strtol(f_fix, NULL, 10);
+	long val = strtol(f_val, NULL, 10);
+	long gap = strtol(f_gap, NULL, 10);
+	c->s->rows++;
+	if (val) c->s->valid_rows++;
+	if (fix == 3) c->s->fix3_rows++;
+	if (gap) c->s->gap_rows++;
+	if (c->last_itow >= 0 && itow < c->last_itow) c->s->itow_monotonic = 0;
+	c->last_itow = itow;
+}
+
+static void clocklog_replay(const char *name,
+                            struct clocklog_replay_stats *out) {
+	char path[512];
+	snprintf(path, sizeof path, "%s/%s", LBE_FIXTURE_DIR, name);
+	out->rows = out->valid_rows = out->fix3_rows = out->gap_rows = 0;
+	out->itow_monotonic = 1;
+	FILE *f = fopen(path, "rb");
+	if (!f) {
+		printf("  FAIL cannot open %s\n", path);
+		g_test_total++; g_test_fail++;
+		out->itow_monotonic = 0;
+		return;
+	}
+	static uint8_t frames[64 * 1024];
+	size_t total = fread(frames, 1, sizeof frames, f);
+	fclose(f);
+
+	struct clocklog_state st;
+	clocklog_init(&st);
+	struct clocklog_replay_ctx ctx = { out, -1.0 };
+	for (size_t fo = 0; fo + 64 <= total; fo += 64) {
+		const uint8_t *r = &frames[fo];   /* [seq][len][payload] */
+		size_t payload = (r[1] == 0) ? 0 : r[1];
+		if (payload > 62) payload = 62;
+		clocklog_feed(&st, r + 2, payload, clocklog_replay_emit, &ctx);
+	}
+}
+
 void run_replay_tests(void) {
 	printf("replay:\n");
 
@@ -74,5 +150,27 @@ void run_replay_tests(void) {
 		CHECK(pvt.fix_type == 3 && pvt.num_sv >= 4);
 		CHECK(sv.valid == 1 && sv.num_ch >= 10);
 		CHECK(clk.valid == 1 && clk.tacc_ns < 100);
+	}
+
+	/* clocklog over the same fixtures: honest CSV rows, iTOW-driven. */
+	{
+		/* No antenna: no fix -> every row's trust gate must read invalid. */
+		struct clocklog_replay_stats s;
+		clocklog_replay("ubx_1425_noant.bin", &s);
+		CHECK(s.rows > 0);
+		CHECK(s.valid_rows == 0);     /* no fix -> nothing trustworthy */
+		CHECK(s.fix3_rows == 0);
+		CHECK(s.itow_monotonic == 1); /* iTOW never goes backwards */
+		CHECK(s.gap_rows == 0);       /* clean 1 Hz capture -> no false gaps */
+	}
+	{
+		/* 3D fix: at least some rows pass the trust gate and report fix 3. */
+		struct clocklog_replay_stats s;
+		clocklog_replay("ubx_1425_3dfix.bin", &s);
+		CHECK(s.rows > 0);
+		CHECK(s.valid_rows > 0);
+		CHECK(s.fix3_rows > 0);
+		CHECK(s.itow_monotonic == 1);
+		CHECK(s.gap_rows == 0);       /* clean capture -> no spurious gaps */
 	}
 }

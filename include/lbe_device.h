@@ -105,6 +105,13 @@ int lbe_gps_info(struct lbe_device* dev);
  * unsupported; otherwise loops until the process is killed. */
 int lbe_diag(struct lbe_device* dev);
 
+/* LBE-1425 only: stream a CSV time series of NAV-CLOCK timing telemetry
+ * (iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap) from the
+ * EP 0x83 diagnostics stream, line-buffered for live plotting/logging.
+ * `seconds` bounds the run (<=0 = until the process is killed). Returns -1 if
+ * unsupported on this model. */
+int lbe_clocklog(struct lbe_device* dev, int seconds);
+
 /* Reverse-engineering helper: claim the HID interface and hex-dump every
  * interrupt-IN frame from endpoint `ep` for `duration_ms` milliseconds.
  * Useful to check whether a device streams NMEA / UBX on the HID side.

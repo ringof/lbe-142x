@@ -129,6 +129,8 @@ void print_usage(int model, int is_1425) {
 		       generic ? " (LBE-1425 only)" : "");
 		printf("  --diag                 Live UBX diagnostics (CNR histogram + clock"
 		       " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
+		printf("  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting"
+		       " (Ctrl-C, or run N s)%s\n", generic ? " (LBE-1425 only)" : "");
 	}
 
 	printf("  --blink                Blink output LED(s) for 3 seconds\n");
@@ -164,7 +166,10 @@ int main(int argc, char *argv[]) {
 	uint16_t preferred_pid = 0;
 	int help_requested = 0;
 
-	printf("lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
+	/* Banner + the "Connected to" line below are human-facing chatter -> stderr,
+	 * so data modes that write machine-readable output to stdout (e.g.
+	 * `--clocklog >> run.csv`) produce a clean, uncontaminated stream. */
+	fprintf(stderr, "lbe-142x v1.3 26 Jun 2026 Leo Bodnar LBE-142x / LBE-Mini GPS clock source config\n");
 
 	/* Pre-scan for --pid and --help so device-open can filter the
 	 * enumeration and --help works without a device attached. */
@@ -213,7 +218,7 @@ int main(int argc, char *argv[]) {
 	case PID_LBE_MINI: model_name = "Mini"; break;
 	default:           model_name = "142x"; break;
 	}
-	printf("Connected to LBE-%s\n", model_name);
+	fprintf(stderr, "Connected to LBE-%s\n", model_name);
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--f1") == 0 || strcmp(argv[i], "--f2") == 0 || 
@@ -530,6 +535,14 @@ int main(int argc, char *argv[]) {
 			changed = 1;
 		} else if (strcmp(argv[i], "--diag") == 0) {
 			lbe_diag(dev);
+			changed = 1;
+		} else if (strcmp(argv[i], "--clocklog") == 0) {
+			/* --clocklog [seconds]: CSV NAV-CLOCK time series. Optional
+			 * positive duration; default runs until Ctrl-C. */
+			int seconds = 0;
+			if (i + 1 < argc && argv[i+1][0] >= '0' && argv[i+1][0] <= '9')
+				seconds = atoi(argv[++i]);
+			lbe_clocklog(dev, seconds);
 			changed = 1;
 		} else if (strcmp(argv[i], "--rawdump") == 0) {
 			/* Hidden RE helper: --rawdump [ep] [ms]. Defaults ep=0x81,

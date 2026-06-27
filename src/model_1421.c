@@ -373,6 +373,64 @@ static int m1425_diag(struct lbe_transport *t) {
 	return 0;
 }
 
+/* --- LBE-1425 NAV-CLOCK time-series log (--clocklog) ------------------------
+ * Streams one CSV row per NAV-CLOCK (~1 Hz) from the same EP 0x83 diagnostics
+ * stream --diag uses, for plotting how the GPS timing solution behaves over
+ * time. Output is line-buffered so it can be piped live or appended to a file.
+ *
+ * Honesty (see issue #17): the time axis is the u-blox iTOW, not host arrival
+ * time; stale/duplicate NAV-CLOCKs (iTOW not advancing) are dropped and missed
+ * seconds are flagged as an explicit gap (never interpolated); sentinel
+ * accuracies render as -1; and a sample is marked valid only with a real fix.
+ * The continuity bookkeeping lives in clocklog_feed() so it is replay-tested.
+ *
+ * Scope caveat (printed in the header): NAV-CLOCK is the receiver's own
+ * self-reported clock solution, NOT an independent measurement of the
+ * disciplined OUT1/OUT2 output (that needs an external counter/reference). */
+static void clocklog_print_row(const char *row, void *ctx) {
+	(void)ctx;
+	printf("%s\n", row);
+	fflush(stdout);   /* line-buffered so live pipes/redirects see each row */
+}
+
+static int m1425_clocklog(struct lbe_transport *t, int seconds) {
+	lbe_transport_claim(t);
+
+	struct clocklog_state st;
+	clocklog_init(&st);
+
+	printf("# LBE-1425 NAV-CLOCK time series (u-blox self-report; NOT an\n");
+	printf("# independent measurement of the disciplined OUT1/OUT2 output).\n");
+	printf("# iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap\n");
+	fflush(stdout);
+
+	m1425_diag_poll(t);
+	uint32_t last_poll = lbe_millis();
+	uint32_t start     = last_poll;
+
+	for (;;) {
+		uint8_t r[LBE_1425_DIAG_FRM];
+		int got = lbe_transport_read_input(t, LBE_1425_DIAG_EP, r, sizeof r, 500);
+		if (got < 0) break;
+
+		/* Monotonic host clock, only for re-poll keepalive and the optional
+		 * run-duration bound -- never as the data time axis. */
+		uint32_t now = lbe_millis();
+		if (now - last_poll > 1000) { m1425_diag_poll(t); last_poll = now; }
+		if (seconds > 0 && now - start >= (uint32_t)seconds * 1000u) break;
+
+		/* Frame = [seq][len][payload]; len 0 is a keepalive. */
+		if (got >= 3 && r[1] != 0) {
+			size_t payload = r[1];
+			if (payload > (size_t)(got - 2)) payload = (size_t)(got - 2);
+			clocklog_feed(&st, r + 2, payload, clocklog_print_row, NULL);
+		}
+	}
+
+	lbe_transport_release(t);
+	return 0;
+}
+
 /* --- LBE-1425 GPS info / true antenna status (experimental) ----------------
  * The feature-report ANT bit only flags a *short*; a disconnected antenna
  * reads "OK". The u-blox knows the real state via UBX-MON-HW (M8) or MON-RF
@@ -520,5 +578,6 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.set_dynmodel       = m1425_set_dynmodel,
 	.set_nmea           = m1425_set_nmea,
 	.diag               = m1425_diag,
+	.clocklog           = m1425_clocklog,
 	.gps_info           = m1425_gps_info,
 };
