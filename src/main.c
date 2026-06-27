@@ -319,7 +319,19 @@ int main(int argc, char *argv[]) {
 				/* Antenna status is not decodable on the Mini feature
 				 * report -- the vendor UI does not expose it either. */
 				if (model != LBE_MINI) {
-					printf("  Antenna: %s\n", status.antenna_ok ? "OK" : "Short Circuit");
+					if (!status.antenna_ok) {
+						printf("  Antenna: Short Circuit\n");
+					} else if (lbe_get_pid(dev) == PID_LBE_1425) {
+						/* The 1425 reports antenna bias current, so we can tell
+						 * "no antenna" (0 mA) from a healthy one -- the bit alone
+						 * only flags a short. */
+						if (status.antenna_current_ma == 0)
+							printf("  Antenna: Not connected (0 mA)\n");
+						else
+							printf("  Antenna: OK (%u mA)\n", status.antenna_current_ma);
+					} else {
+						printf("  Antenna: OK\n");
+					}
 				}
 				printf("  Output(s) Enabled: %s\n", status.outputs_enabled ? "Yes" : "No");
 				printf("  OUT1 Frequency: %u Hz\n", status.frequency1);

@@ -59,6 +59,7 @@ static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	s->fll_enabled    = buf[18] != 0;
 	s->out1_power_low = buf[19] != 0;
 	s->out2_power_low = buf[20] != 0;
+	s->antenna_current_ma = buf[23];   /* LBE-1425 antenna bias current (mA) */
 	s->out1_drive_ma  = 0;
 	s->outputs_enabled = (s->raw_status & (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT))
 	                  == (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT);

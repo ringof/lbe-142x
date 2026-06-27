@@ -110,13 +110,26 @@ Same layout as the 1421 status report for the documented fields:
 | 18     | FLL mode        | 0               |
 | 19     | OUT1 power low  | 0               |
 | 20     | OUT2 power low  | 0               |
-| **21** | **extra**       | `67 02 05 00`   |
+| 21     | GNSS mask       | tracks `--gnss` |
+| 22     | dynModel        | `0x02` Stationary |
+| 23     | antenna current | mA (see below)  |
+| 24     | flag (unknown)  | `0x00`/`0x01`   |
 | 25..   | padding         | `FF…`           |
 
-Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). Bytes
-**21-24 (`67 02 05 00`)** are new vs the 1421 and unexplained — candidate
-"increased stability" telemetry (fw version / holdover metric / temperature).
-Constant in this capture; needs captures across state changes to decode.
+Status bits @1 match `lbe_common.h` (GPS/PLL/ANT/LED/OUT1/OUT2/PPS). The tail
+bytes (21-24), once thought to be opaque telemetry, decode by watching them live
+(`--statlog`):
+
+- **byte 21 = GNSS constellation mask** — moves exactly with `--gnss` (e.g.
+  `0x47` ↔ `0x67` when QZSS toggles).
+- **byte 22 = u-blox dynamic model** (`0x02` = Stationary, the default).
+- **byte 23 = measured antenna bias current (mA).** 0 with no antenna; ~5 mA on
+  one patch, ~11–12 mA (jittering ±1, ADC noise) on another. This gives true
+  antenna-presence detection the single ANT *short* bit can't: 0 = open/none,
+  nonzero = connected, short = ANT bit clears. Surfaced in `--status` as
+  `Antenna: Not connected (0 mA)` / `OK (N mA)` / `Short Circuit`.
+- **byte 24** stays `0x01` (here) / `0x00` (original capture); not yet decoded.
+  Did not change across a GPS lock transition, so it is not a fix flag.
 
 ## Diagnostics channel: UBX over EP 0x83 (confirmed)
 
@@ -165,13 +178,14 @@ Precision GNSS firmware (not the M8T timing variant), protocol 18.00. This
 explains the GNSS behaviour: the BeiDou-vs-GPS/SBAS/Galileo exclusion is the M8
 3-concurrent-GNSS limitation, and NAV-SAT / 92-byte NAV-PVT are protocol-15+.
 
-**Antenna status:** `UBX-MON-HW` responds but reports `antStatus = DONTKNOW` /
-`antPower = DONTKNOW` — the board does **not** wire the antenna to the u-blox
-antenna supervisor; short detection is done MCU-side (the feature-report ANT
-bit, which only flags a *short*, never an open/disconnect). So accurate
-OK/OPEN/SHORT antenna status is **not obtainable in software** on this board, and
-MON-HW is not worth surfacing in `--status`. (The status feature-report ANT bit
-remains the only antenna signal.)
+**Antenna status:** `UBX-MON-HW` reports `antStatus = DONTKNOW` — the board does
+not wire the antenna to the u-blox supervisor, so MON-HW is a dead end. But the
+LBE MCU measures the antenna **bias current** itself and reports it in the status
+feature report at **byte 23** (mA) -- see the status-read section. That gives
+real presence detection (0 mA = open/none, nonzero = connected, over-current
+short clears the ANT bit), which is what `--status` now uses. So accurate
+antenna state *is* obtainable in software after all -- just from the LBE report,
+not from the u-blox.
 
 ## Factory reset
 

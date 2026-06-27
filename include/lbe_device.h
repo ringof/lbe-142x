@@ -27,6 +27,10 @@ struct lbe_status {
     int pps_enabled;
     int out1_power_low;
     int out2_power_low;
+    /* LBE-1425: measured antenna bias current in mA (status report byte 23).
+     * 0 = no antenna / open; a few..tens mA = a healthy active antenna; an
+     * over-current short instead clears the antenna_ok bit. 0 on other models. */
+    uint8_t antenna_current_ma;
     /* Mini only: actual output drive strength in mA (8/16/24/32).
      * 0 for other models which use the out1_power_low bool instead. */
     uint8_t out1_drive_ma;
