@@ -240,9 +240,12 @@ if(LBE_BUILD_TESTS)
         tests/test_main.c
         tests/test_ubx.c
         tests/test_nmea.c
+        tests/test_replay.c
         src/ubx.c
         src/nmea.c)
     target_include_directories(lbe-tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_compile_definitions(lbe-tests PRIVATE
+        LBE_FIXTURE_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")
     if(MSVC)
         target_compile_options(lbe-tests PRIVATE /W4 /WX)
     else()

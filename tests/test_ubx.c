@@ -193,4 +193,32 @@ void run_ubx_tests(void) {
 		ubx_consume(buf, &buf_len, sizeof buf, cf, cfn, &pvt, &sv, &clk);
 		CHECK(clk.valid == 1 && clk.tacc_ns == 7u);
 	}
+
+	/* ubx_next: extract messages, skip 0xFF/0x00 padding, leave a partial tail */
+	{
+		uint8_t b[400];
+		size_t n = 0;
+		b[n++] = 0xFF; b[n++] = 0xFF;                 /* leading padding */
+		uint8_t pl[20];
+		memset(pl, 0, sizeof pl);
+		n += ubx_frame(&b[n], 0x0A, 0x04, pl, 20);    /* msg 1: cls 0x0A id 0x04 */
+		b[n++] = 0x00;                                /* inter-message padding */
+		uint8_t pl2[4] = {1, 2, 3, 4};
+		n += ubx_frame(&b[n], 0x06, 0x3E, pl2, 4);    /* msg 2: cls 0x06 id 0x3E */
+		b[n++] = 0xB5; b[n++] = 0x62; b[n++] = 0x01;  /* truncated 3rd message */
+
+		size_t off = 0;
+		uint8_t cls, id;
+		const uint8_t *p;
+		uint16_t plen;
+		struct ubx_scan_stats st = {0};
+		CHECK(ubx_next(b, n, &off, &cls, &id, &p, &plen, &st) == 1);
+		CHECK(cls == 0x0A && id == 0x04 && plen == 20);
+		CHECK(ubx_next(b, n, &off, &cls, &id, &p, &plen, &st) == 1);
+		CHECK(cls == 0x06 && id == 0x3E && plen == 4 && p[0] == 1 && p[3] == 4);
+		CHECK(ubx_next(b, n, &off, &cls, &id, &p, &plen, &st) == 0);
+		CHECK(off == n - 3);            /* partial 3rd message retained */
+		CHECK(st.pad_skips == 3);       /* the 0xFF 0xFF + 0x00 */
+		CHECK(st.ck_fails == 0);
+	}
 }
