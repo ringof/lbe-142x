@@ -24,6 +24,19 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Optional sanitizers for CI / local hardening, e.g.:
+#   cmake -B build -DLBE_SANITIZE=address,undefined
+# Applies to every target defined below (the tool and the unit tests).
+set(LBE_SANITIZE "" CACHE STRING
+    "Comma-separated -fsanitize list (e.g. address,undefined); empty = off")
+if(LBE_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "LBE_SANITIZE is not supported with the MSVC toolchain")
+    endif()
+    add_compile_options(-fsanitize=${LBE_SANITIZE} -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=${LBE_SANITIZE})
+endif()
+
 # Output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -61,7 +74,9 @@ set(HEADERS
     include/ubx.h
 )
 
-if(NOT MSVC)
+# Strip release binaries, but keep symbols when sanitizing or in a non-Release
+# build -- ASan/UBSan/Valgrind need them for readable reports.
+if(NOT MSVC AND NOT LBE_SANITIZE AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_EXE_LINKER_FLAGS "-s")
 endif()
 
@@ -214,6 +229,26 @@ else()
             -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
             -Wl,-Bdynamic)
     endif()
+endif()
+
+# Unit tests (hardware-free): a small C binary exercising the pure parsing
+# units (src/ubx.c, src/nmea.c), registered with CTest. See tests/.
+option(LBE_BUILD_TESTS "Build the hardware-free C unit tests (ctest)" ON)
+if(LBE_BUILD_TESTS)
+    enable_testing()
+    add_executable(lbe-tests
+        tests/test_main.c
+        tests/test_ubx.c
+        tests/test_nmea.c
+        src/ubx.c
+        src/nmea.c)
+    target_include_directories(lbe-tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    if(MSVC)
+        target_compile_options(lbe-tests PRIVATE /W4 /WX)
+    else()
+        target_compile_options(lbe-tests PRIVATE -Wall -Wextra -Wno-pedantic -Werror)
+    endif()
+    add_test(NAME lbe-unit COMMAND lbe-tests)
 endif()
 
 # Installation
