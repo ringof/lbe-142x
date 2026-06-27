@@ -22,11 +22,21 @@ if (!exists("refresh")) refresh = 1
 set datafile separator ","
 set datafile commentschars "#"
 
+# Pick an interactive terminal this gnuplot actually has compiled in
+# (qt > wxt > x11); fall back to ASCII. Force ASCII with dumb=1. (Not every
+# build ships qt -- e.g. gnuplot-nox or some conda builds -- so don't assume.)
 if (exists("dumb")) {
 	set term dumb size 120,32
-} else {
+} else { if (strstrt(GPVAL_TERMINALS, "qt") > 0) {
 	set term qt noraise size 1000,600 title "LBE-1425 clocklog (live)"
-}
+} else { if (strstrt(GPVAL_TERMINALS, "wxt") > 0) {
+	set term wxt noraise size 1000,600 title "LBE-1425 clocklog (live)"
+} else { if (strstrt(GPVAL_TERMINALS, "x11") > 0) {
+	set term x11 noraise size 1000,600 title "LBE-1425 clocklog (live)"
+} else {
+	print "clocklog_live: no qt/wxt/x11 terminal in this gnuplot; using ASCII."
+	set term dumb size 120,32
+} } } }
 
 set xlabel "GPS time-of-week iTOW (s)"
 set ylabel "time accuracy tAcc (ns)"

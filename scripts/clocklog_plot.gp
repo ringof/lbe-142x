@@ -23,12 +23,26 @@ if (!exists("csv")) csv = "run.csv"
 set datafile separator ","
 set datafile commentschars "#"
 
+# Choose a terminal that this gnuplot actually has compiled in. For PNG prefer
+# pngcairo, fall back to png. For an interactive window prefer qt > wxt > x11
+# (persist, so it stays open without -p); fall back to ASCII. Force ASCII with
+# dumb=1. (Not every build ships qt/pngcairo -- e.g. gnuplot-nox / some conda.)
 if (exists("out")) {
-	set term pngcairo size 1000,600
+	if (strstrt(GPVAL_TERMINALS, "pngcairo") > 0) { set term pngcairo size 1000,600 } \
+	else { set term png size 1000,600 }
 	set output out
 } else { if (exists("dumb")) {
 	set term dumb size 120,32
-} }
+} else { if (strstrt(GPVAL_TERMINALS, "qt") > 0) {
+	set term qt persist size 1000,600 title "LBE-1425 clocklog"
+} else { if (strstrt(GPVAL_TERMINALS, "wxt") > 0) {
+	set term wxt persist size 1000,600 title "LBE-1425 clocklog"
+} else { if (strstrt(GPVAL_TERMINALS, "x11") > 0) {
+	set term x11 persist size 1000,600 title "LBE-1425 clocklog"
+} else {
+	print "clocklog_plot: no qt/wxt/x11 terminal in this gnuplot; using ASCII."
+	set term dumb size 120,32
+} } } } }
 
 set title "LBE-1425 GPS timing (u-blox NAV-CLOCK self-report)"
 set xlabel "GPS time-of-week iTOW (s)"
