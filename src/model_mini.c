@@ -521,7 +521,8 @@ static int mini_set_drive_ma(struct lbe_transport *t, unsigned ma) {
 
 const struct lbe_model_ops lbe_ops_mini = {
 	.name               = "Mini",
-	.max_freq           = LBE_MINI_MAX_FREQ,
+	.max_freq_out1      = LBE_MINI_MAX_FREQ,
+	.max_freq_out2      = LBE_MINI_MAX_FREQ,
 	.init               = mini_init,
 	.get_status         = mini_get_status,
 	.set_frequency      = mini_set_frequency,

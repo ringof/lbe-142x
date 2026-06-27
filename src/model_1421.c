@@ -491,7 +491,8 @@ static int m1425_gps_info(struct lbe_transport *t) {
 
 const struct lbe_model_ops lbe_ops_1421 = {
 	.name               = "1421 dual output",
-	.max_freq           = LBE_1421_MAX_FREQ,
+	.max_freq_out1      = LBE_1421_MAX_FREQ,
+	.max_freq_out2      = LBE_1421_MAX_FREQ,
 	.init               = NULL,
 	.get_status         = m1421_get_status,
 	.set_frequency      = m1421_set_frequency,
@@ -505,11 +506,12 @@ const struct lbe_model_ops lbe_ops_1421 = {
 };
 
 /* LBE-1425: the 1421 dual-output protocol verbatim, plus the 1425's extra
- * GNSS / dynamic-model / NMEA-output commands. (Per-output frequency caps
- * are enforced separately in lbe_device.c via the PID.) */
+ * GNSS / dynamic-model / NMEA-output commands. Its asymmetric per-output
+ * frequency caps are carried in max_freq_out1/out2 below. */
 const struct lbe_model_ops lbe_ops_1425 = {
 	.name               = "1425 dual output",
-	.max_freq           = LBE_1425_OUT2_MAX_FREQ,
+	.max_freq_out1      = LBE_1425_OUT1_MAX_FREQ,
+	.max_freq_out2      = LBE_1425_OUT2_MAX_FREQ,
 	.init               = NULL,
 	.get_status         = m1421_get_status,
 	.set_frequency      = m1421_set_frequency,
