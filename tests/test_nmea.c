@@ -48,9 +48,8 @@ void run_nmea_tests(void) {
 		CHECK(pvt.fix_type == 0 && pvt.time_valid == 0);
 	}
 
-	/* RMC: status 'A' sets date + time_valid; status 'V' is ignored.
-	 * (The empty-status-field case is issue #3 -- intentionally not asserted
-	 * here; it lands with that fix.) */
+	/* RMC: status 'A' sets date + time_valid; 'V', an empty field, and any
+	 * other status are ignored (issue #3). */
 	{
 		struct nmea_state st;
 		struct gnss_pvt pvt;
@@ -69,6 +68,13 @@ void run_nmea_tests(void) {
 		memset(&pvt, 0, sizeof pvt);
 		r = nmea_feed(&st,
 		    "$GPRMC,123519,V,4807.038,N,01131.000,E,,,230394,,",
+		    &pvt, &sv);
+		CHECK(r == 0 && pvt.time_valid == 0 && pvt.valid == 0);
+
+		/* empty status field (truncated/garbled) must NOT be treated as a fix */
+		memset(&pvt, 0, sizeof pvt);
+		r = nmea_feed(&st,
+		    "$GPRMC,123519,,4807.038,N,01131.000,E,,,230394,,",
 		    &pvt, &sv);
 		CHECK(r == 0 && pvt.time_valid == 0 && pvt.valid == 0);
 	}
