@@ -344,8 +344,10 @@ gnuplot -e "csv='run.csv'; out='run.png'" scripts/clocklog_plot.gp  # PNG
 gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_plot.gp         # ASCII
 ```
 
-No device handy? `scripts/sample_clocklog.csv` is a real capture replay you can
-plot immediately to see the format and the `tAcc` settling curve:
+No device handy? `scripts/sample_clocklog.csv` is a real capture slice you can
+plot immediately — one antenna fix-loss event (baseline lock → grey untrusted
+dropout → ~746 ns reacquisition spike → settle), which shows the trust gating
+and the trusted/untrusted styling at a glance:
 
 ```
 gnuplot -e "csv='scripts/sample_clocklog.csv'; dumb=1" scripts/clocklog_plot.gp
