@@ -99,7 +99,11 @@ static int handle_gga(char **f, int nf, struct gnss_pvt *pvt) {
 
 static int handle_rmc(char **f, int nf, struct gnss_pvt *pvt) {
 	if (nf < 10) return 0;
-	if (f[2][0] == 'V') return 0;  /* void/invalid fix */
+	/* RMC status field is only ever 'A' (active) or 'V' (void). Accept only
+	 * 'A'; reject 'V', an empty field, or anything else -- otherwise a
+	 * truncated/garbled sentence with a blank status would be treated as a
+	 * valid fix and stamp an untrustworthy UTC. */
+	if (f[2][0] != 'A') return 0;
 	parse_utc(f[1], &pvt->hour, &pvt->min, &pvt->sec);
 	pvt->lat_1e7 = parse_lat_lon(f[3], f[4]);
 	pvt->lon_1e7 = parse_lat_lon(f[5], f[6]);
