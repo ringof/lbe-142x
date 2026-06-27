@@ -433,7 +433,7 @@ int main(int argc, char *argv[]) {
 				}
 				lbe_sleep_ms(1000);
 			}
-			changed = 1;
+			/* never reached: --statlog loops until Ctrl-C */
 		} else if (strcmp(argv[i], "--probe-op") == 0) {
 			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
 			 * and report which status-report bytes it changed. */
