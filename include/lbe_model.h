@@ -16,7 +16,11 @@
  * without dispatching. */
 struct lbe_model_ops {
 	const char *name;
-	uint32_t max_freq;
+	/* Max settable frequency per output in Hz. Symmetric models set both
+	 * fields equal; the 1425 caps OUT1 (its 1PPS output) below OUT2. Read
+	 * via lbe_max_freq(). */
+	uint32_t max_freq_out1;
+	uint32_t max_freq_out2;
 
 	/* Optional device init called once after transport open. */
 	int (*init)(struct lbe_transport *t);

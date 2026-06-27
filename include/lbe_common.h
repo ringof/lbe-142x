@@ -77,8 +77,8 @@
 #define LBE_1421_MAX_FREQ 1400000000UL
 #define LBE_MINI_MAX_FREQ 810000000UL
 /* LBE-1425 has asymmetric per-output limits: OUT1 <= 800 MHz (the 1PPS
- * output), OUT2 <= 1.4 GHz. The current 1421 ops use a single max_freq;
- * per-output enforcement is a TODO -- see docs/reverse/LBE-1425-RE-plan.md. */
+ * output), OUT2 <= 1.4 GHz. Enforced per output via the model vtable's
+ * max_freq_out1/max_freq_out2 (see lbe_max_freq()). */
 #define LBE_1425_OUT1_MAX_FREQ 800000000UL
 #define LBE_1425_OUT2_MAX_FREQ 1400000000UL
 

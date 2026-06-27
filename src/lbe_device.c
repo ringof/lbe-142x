@@ -44,8 +44,8 @@ struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 		break;
 	case PID_LBE_1425:
 		/* 1425 = the 1421 dual-output protocol plus GNSS / dynamic-model
-		 * / NMEA-output commands (lbe_ops_1425). Per-output frequency
-		 * caps are enforced in lbe_max_freq() via the PID. See
+		 * / NMEA-output commands (lbe_ops_1425). Its asymmetric per-output
+		 * frequency caps live in the ops vtable (max_freq_out1/out2). See
 		 * docs/reverse/LBE-1425-config-v1.10.md. */
 		dev->model = LBE_1421_DUALOUT;
 		dev->ops = &lbe_ops_1425;
@@ -96,11 +96,9 @@ int lbe_send_raw(struct lbe_device *dev, uint8_t opcode,
 }
 
 uint32_t lbe_max_freq(struct lbe_device *dev, int output) {
-	/* The 1425 is the only model with asymmetric per-output limits; every
-	 * other model is symmetric, so fall back to the ops vtable's max_freq. */
-	if (dev->pid == PID_LBE_1425)
-		return output == 1 ? LBE_1425_OUT1_MAX_FREQ : LBE_1425_OUT2_MAX_FREQ;
-	return dev->ops->max_freq;
+	/* Per-output cap straight from the model vtable. Symmetric models set
+	 * both fields equal; the 1425 differs (OUT1 800 MHz, OUT2 1.4 GHz). */
+	return output == 1 ? dev->ops->max_freq_out1 : dev->ops->max_freq_out2;
 }
 
 int lbe_get_device_status(struct lbe_device *dev, struct lbe_status *s) {

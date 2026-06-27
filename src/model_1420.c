@@ -109,7 +109,8 @@ static int m1420_set_power_level(struct lbe_transport *t, int output, int low) {
 
 const struct lbe_model_ops lbe_ops_1420 = {
 	.name               = "1420",
-	.max_freq           = LBE_1420_MAX_FREQ,
+	.max_freq_out1      = LBE_1420_MAX_FREQ,
+	.max_freq_out2      = LBE_1420_MAX_FREQ,
 	.init               = NULL,
 	.get_status         = m1420_get_status,
 	.set_frequency      = m1420_set_frequency,
