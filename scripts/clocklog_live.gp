@@ -40,6 +40,9 @@ if (exists("dumb")) {
 
 set xlabel "GPS time-of-week iTOW (s)"
 set ylabel "time accuracy tAcc (ns)"
+# 0-based so a tight, near-constant tAcc renders as a flat low line instead of
+# collapsing to an empty y range (a locked GPSDO can pin tAcc at e.g. 4 ns).
+set yrange [0:*]
 set grid
 set key outside top center horizontal
 

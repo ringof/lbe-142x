@@ -50,6 +50,10 @@ set ylabel "time accuracy tAcc (ns)"
 set y2label "freq accuracy fAcc (ps/s)"
 set ytics nomirror
 set y2tics
+# 0-based so a tight, near-constant tAcc/fAcc renders as a flat low line instead
+# of collapsing to an empty range (a locked GPSDO can pin tAcc at e.g. 4 ns).
+set yrange [0:*]
+set y2range [0:*]
 set grid
 set key outside top center horizontal
 
