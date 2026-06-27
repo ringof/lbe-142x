@@ -9,6 +9,7 @@
 #   csv       path to the growing CSV           (default "run.csv")
 #   window    sliding window width, seconds     (default 120)
 #   fromstart if set, show the whole run from the first sample (ignores window)
+#   tight     if set, auto-scale y to the data (+1 ns margin) instead of 0-based
 #   refresh   redraw period, seconds            (default 1)
 #   dumb      if set, render ASCII in-terminal (no X needed)
 #
@@ -41,9 +42,12 @@ if (exists("dumb")) {
 
 set xlabel "GPS time-of-week iTOW (s)"
 set ylabel "time accuracy tAcc (ns)"
-# 0-based so a tight, near-constant tAcc renders as a flat low line instead of
-# collapsing to an empty y range (a locked GPSDO can pin tAcc at e.g. 4 ns).
-set yrange [0:*]
+# Default y is 0-based so a tight, near-constant tAcc renders as a flat low line
+# instead of collapsing to an empty range (a locked GPSDO can pin tAcc at e.g.
+# 4 ns). tight=1 instead zooms y to the data band (+/-1 ns margin, computed in
+# the loop) to magnify structure like tAcc dithering 3<->4 ns; the margin keeps
+# a dead-flat lock from collapsing the range.
+if (!exists("tight")) { set yrange [0:*] }
 set grid
 set key outside top center horizontal
 
@@ -59,6 +63,17 @@ while (1) {
 		# rightward). Otherwise slide a `window`-second window with the data.
 		if (exists("fromstart")) { xlo = STATS_min } else { xlo = xhi - window }
 		set xrange [xlo : xhi]
+		# tight: zoom y to the tAcc band within the visible window (named stats
+		# "Y" so it can't clobber the x stats above); +/-1 ns margin keeps a
+		# dead-flat lock from collapsing to an empty range. Sentinels (-1) and
+		# out-of-window samples are excluded via the conditional.
+		if (exists("tight")) {
+			stats csv using ($1 >= xlo && $4 >= 0 ? $4 : 1/0) name "Y" nooutput
+			if (exists("Y_records") && Y_records >= 1) {
+				ylo = (Y_min - 1 < 0) ? 0 : Y_min - 1
+				set yrange [ylo : Y_max + 1]
+			}
+		}
 		plot \
 		  csv using 1:($9==0 && $8==1 && $4>=0 ? $4 : 1/0) \
 		       with linespoints lc rgb "#1f77b4" pt 7 ps 0.6 title "tAcc (trusted)", \

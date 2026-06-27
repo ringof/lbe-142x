@@ -326,9 +326,15 @@ Live strip chart (GUI window if available, or ASCII in-terminal for SSH/no-X):
 gnuplot -e "csv='run.csv'" scripts/clocklog_live.gp                 # GUI window
 gnuplot -e "csv='run.csv'; dumb=1" scripts/clocklog_live.gp         # ASCII
 gnuplot -e "csv='run.csv'; fromstart=1" scripts/clocklog_live.gp    # whole run, no sliding
+gnuplot -e "csv='run.csv'; tight=1" scripts/clocklog_live.gp        # zoom y to the data band
 # options: window=<seconds> (default 120), fromstart (show all from first sample),
-#          refresh=<seconds> (default 1)
+#          tight (zoom y to the data instead of 0-based), refresh=<seconds> (default 1)
 ```
+
+`tight=1` is handy once locked: a disciplined 1425 pins `tAcc` near the receiver's
+1 ns reporting floor, so the default 0-based axis shows just a flat low line —
+`tight` zooms y to the data (with a 1 ns margin) to reveal e.g. `tAcc` dithering
+between 3 and 4 ns. It works the same on the static script below.
 
 Static plot of a finished log:
 
