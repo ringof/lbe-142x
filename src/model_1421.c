@@ -37,7 +37,20 @@ static int send_cmd(struct lbe_transport *t, uint8_t opcode,
 
 static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	uint8_t buf[LBE_REPORT_SIZE] = {0};
-	if (lbe_transport_feat_get(t, LBE_STATUS_REPORT_ID, buf) < 0) return -1;
+
+	/* A valid status always carries a non-zero OUT1 frequency (min 1 Hz,
+	 * realistically MHz). An all-zero report is a transient garbage read --
+	 * seen e.g. when an antenna unplug briefly shorts and stuns the MCU,
+	 * which would otherwise show as a bogus "Short Circuit / 0 Hz". Retry
+	 * once before giving up rather than reporting the false state. */
+	for (int attempt = 0; attempt < 2; attempt++) {
+		memset(buf, 0, sizeof buf);
+		if (lbe_transport_feat_get(t, LBE_STATUS_REPORT_ID, buf) < 0) return -1;
+		uint32_t f1 = buf[6] | (buf[7] << 8) | (buf[8] << 16) | (buf[9] << 24);
+		if (f1 != 0) break;
+		if (attempt == 0) lbe_sleep_ms(20);
+		else return -1;   /* persistently implausible -- treat as failed read */
+	}
 
 	s->raw_status     = buf[1];
 	s->frequency1     = buf[6]  | (buf[7]  << 8) | (buf[8]  << 16) | (buf[9]  << 24);

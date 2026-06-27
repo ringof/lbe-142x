@@ -301,7 +301,10 @@ int main(int argc, char *argv[]) {
 				changed = 1;
 			}
 		} else if (strcmp(argv[i], "--status") == 0) {
-			if (lbe_get_device_status(dev, &status) == 0) {
+			if (lbe_get_device_status(dev, &status) != 0) {
+				fprintf(stderr, "Status read failed (device busy or "
+				                "transient fault -- try again)\n");
+			} else {
 				char serial[64];
 				if (lbe_get_serial(dev, serial, sizeof serial) == 0)
 					printf("  Serial: %s\n", serial);
