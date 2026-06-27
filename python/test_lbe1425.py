@@ -372,7 +372,7 @@ def restore_defaults(binp):
 def self_test():
     """Validate the parsers without a device."""
     t = Tally()
-    sample = """lbe-142x v1.3 ...
+    sample = """lbe-142x v1.4 ...
 Connected to LBE-1425 dual output
   Serial: 0C7BB80E70E5
 Device Status (0xEE):

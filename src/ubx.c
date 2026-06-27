@@ -3,6 +3,7 @@
  * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 #include "ubx.h"
+#include <stdio.h>
 #include <string.h>
 
 int ubx_checksum_ok(const uint8_t *msg, size_t total) {
@@ -108,6 +109,8 @@ void ubx_parse_sat(const uint8_t *p, int n, struct gnss_svinfo *sv) {
  * tAcc(u32 ns) fAcc(u32 ps/s). */
 void ubx_parse_clock(const uint8_t *p, int n, struct ubx_clock *clk) {
 	if (n < 20) return;
+	clk->itow_ms   = (uint32_t)p[0]  | ((uint32_t)p[1]  << 8)
+	               | ((uint32_t)p[2]  << 16) | ((uint32_t)p[3]  << 24);
 	clk->clkb_ns   = (int32_t)((uint32_t)p[4]  | ((uint32_t)p[5]  << 8)
 	                         | ((uint32_t)p[6]  << 16) | ((uint32_t)p[7]  << 24));
 	clk->clkd_nsps = (int32_t)((uint32_t)p[8]  | ((uint32_t)p[9]  << 8)
@@ -150,4 +153,73 @@ int ubx_consume(uint8_t *buf, size_t *buf_len, size_t buf_cap,
 		*buf_len -= off;
 	}
 	return pvt_updates;
+}
+
+int clocklog_row(char *out, size_t cap, const struct ubx_clock *clk,
+                 int fix_type, int num_sv, int gap) {
+	/* Sentinel accuracies (0xFFFFFFFF = "unknown") -> -1, never a 4.29e9 lie. */
+	long tacc = (clk->tacc_ns == UINT32_MAX) ? -1L : (long)clk->tacc_ns;
+	long facc = (clk->facc_ps == UINT32_MAX) ? -1L : (long)clk->facc_ps;
+	int valid = clk->valid && fix_type >= 2
+	         && clk->tacc_ns != UINT32_MAX && clk->facc_ps != UINT32_MAX;
+	int w = snprintf(out, cap, "%u.%03u,%d,%d,%ld,%ld,%d,%d,%d,%d",
+	                 clk->itow_ms / 1000u, clk->itow_ms % 1000u,
+	                 clk->clkb_ns, clk->clkd_nsps, tacc, facc,
+	                 fix_type, num_sv, valid ? 1 : 0, gap ? 1 : 0);
+	return (w > 0 && (size_t)w < cap) ? w : 0;
+}
+
+void clocklog_init(struct clocklog_state *s) {
+	memset(s, 0, sizeof *s);
+}
+
+int clocklog_feed(struct clocklog_state *s, const uint8_t *in, size_t n,
+                  void (*emit)(const char *row, void *ctx), void *ctx) {
+	if (n == 0) return 0;                       /* keepalive: no UBX payload */
+	if (s->buf_len + n > sizeof s->buf) s->buf_len = 0;  /* overflow: drop */
+	if (n > sizeof s->buf) n = sizeof s->buf;
+	memcpy(s->buf + s->buf_len, in, n);
+	s->buf_len += n;
+
+	int emitted = 0;
+	size_t off = 0;
+	uint8_t cls, id;
+	const uint8_t *p;
+	uint16_t plen;
+	/* Walk every complete UBX message in the buffer so a feed carrying two
+	 * NAV-CLOCKs emits both -- emitting only the last would look like a
+	 * 2-second gap on a perfectly healthy stream. */
+	while (ubx_next(s->buf, s->buf_len, &off, &cls, &id, &p, &plen, NULL)) {
+		if (cls == 0x01 && id == 0x07) {
+			ubx_parse_pvt(p, plen, &s->pvt);  /* carry fix/numSV to the gate */
+			continue;
+		}
+		if (cls != 0x01 || id != 0x22) continue;
+
+		struct ubx_clock clk = {0};
+		ubx_parse_clock(p, plen, &clk);
+		if (!clk.valid) continue;
+		if (s->have_itow && clk.itow_ms == s->last_itow)
+			continue;                  /* iTOW not advancing: stale/dup */
+
+		/* iTOW is the authoritative time axis (immune to USB/scheduler
+		 * jitter). A step other than one second means missed NAV-CLOCK(s)
+		 * -> explicit gap, never interpolated. (The EP 0x83 r[0] byte is NOT
+		 * a per-frame counter -- it holds across whole message groups -- so
+		 * it is not used here.) */
+		int gap = s->have_itow && clk.itow_ms != s->last_itow + 1000u;
+		char row[160];
+		if (clocklog_row(row, sizeof row, &clk,
+		                 s->pvt.fix_type, s->pvt.num_sv, gap) > 0) {
+			if (emit) emit(row, ctx);
+			emitted++;
+		}
+		s->last_itow = clk.itow_ms;
+		s->have_itow = 1;
+	}
+	if (off > 0) {
+		memmove(s->buf, s->buf + off, s->buf_len - off);
+		s->buf_len -= off;
+	}
+	return emitted;
 }

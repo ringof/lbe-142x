@@ -40,6 +40,21 @@ static size_t ubx_frame(uint8_t *out, uint8_t cls, uint8_t id,
 	return (size_t)8 + len;
 }
 
+/* Collector for clocklog_feed's emit callback: keeps the last row + a count. */
+struct row_collect { char last[160]; int count; };
+static void collect_row(const char *row, void *ctx) {
+	struct row_collect *c = (struct row_collect *)ctx;
+	snprintf(c->last, sizeof c->last, "%s", row);
+	c->count++;
+}
+
+/* True if the final comma-separated CSV field of `row` is the single char `ch`
+ * (used to check the trailing `gap` flag). */
+static int last_field_is(const char *row, char ch) {
+	size_t L = strlen(row);
+	return L >= 2 && row[L - 1] == ch && row[L - 2] == ',';
+}
+
 static void make_pvt(uint8_t pl[92], uint8_t valid_flags) {
 	memset(pl, 0, 92);
 	put_u16(&pl[4], 2025);          /* year */
@@ -145,14 +160,103 @@ void run_ubx_tests(void) {
 		uint8_t pl[20];
 		memset(&clk, 0, sizeof clk);
 		memset(pl, 0, sizeof pl);
+		put_u32(&pl[0],  123456000u);         /* iTOW ms */
 		put_u32(&pl[4],  (uint32_t)(-1234));  /* clkB ns */
 		put_u32(&pl[8],  (uint32_t)(-12));    /* clkD ns/s */
 		put_u32(&pl[12], 4u);                 /* tAcc ns */
 		put_u32(&pl[16], 244u);               /* fAcc ps/s */
 		ubx_parse_clock(pl, 20, &clk);
 		CHECK(clk.valid == 1);
+		CHECK(clk.itow_ms == 123456000u);
 		CHECK(clk.clkb_ns == -1234 && clk.clkd_nsps == -12);
 		CHECK(clk.tacc_ns == 4u && clk.facc_ps == 244u);
+	}
+
+	/* clocklog_row: CSV format, sentinel accuracies -> -1, valid trust gate */
+	{
+		char row[160];
+		struct ubx_clock clk = {0};
+		clk.valid = 1;
+		clk.itow_ms = 123456789u;   /* 123456.789 s */
+		clk.clkb_ns = -1234;
+		clk.clkd_nsps = -12;
+		clk.tacc_ns = 4u;
+		clk.facc_ps = 244u;
+
+		/* Good 3D-fix sample with 9 sats -> valid=1, gap=0. */
+		CHECK(clocklog_row(row, sizeof row, &clk, 3, 9, 0) > 0);
+		CHECK(strcmp(row, "123456.789,-1234,-12,4,244,3,9,1,0") == 0);
+
+		/* fixType < 2 (no/2D-less fix) -> valid=0 even with good accuracies. */
+		CHECK(clocklog_row(row, sizeof row, &clk, 0, 0, 0) > 0);
+		CHECK(strcmp(row, "123456.789,-1234,-12,4,244,0,0,0,0") == 0);
+
+		/* gap flag is passed through. */
+		CHECK(clocklog_row(row, sizeof row, &clk, 3, 9, 1) > 0);
+		CHECK(strcmp(row, "123456.789,-1234,-12,4,244,3,9,1,1") == 0);
+
+		/* Sentinel tAcc/fAcc (unknown) -> -1, and valid forced to 0. */
+		clk.tacc_ns = UINT32_MAX;
+		clk.facc_ps = UINT32_MAX;
+		CHECK(clocklog_row(row, sizeof row, &clk, 3, 9, 0) > 0);
+		CHECK(strcmp(row, "123456.789,-1234,-12,-1,-1,3,9,0,0") == 0);
+
+		/* Too-small buffer -> 0, no overflow. */
+		CHECK(clocklog_row(row, 8, &clk, 3, 9, 0) == 0);
+	}
+
+	/* clocklog_feed: iTOW continuity -- drop duplicates, flag gaps, never
+	 * interpolate, emit one row per NAV-CLOCK message -- driven by synthesized
+	 * NAV-CLOCK frames through the emit callback. */
+	{
+		struct clocklog_state st;
+		clocklog_init(&st);
+		struct row_collect c = {{0}, 0};
+		uint8_t cpl[20];
+		uint8_t cf[28];
+		size_t cfn;
+		memset(cpl, 0, sizeof cpl);
+		put_u32(&cpl[12], 7u);
+
+		/* First NAV-CLOCK at iTOW=1000 ms -> one row, gap=0. */
+		put_u32(&cpl[0], 1000u);
+		cfn = ubx_frame(cf, 0x01, 0x22, cpl, 20);
+		CHECK(clocklog_feed(&st, cf, cfn, collect_row, &c) == 1);
+		CHECK(c.count == 1 && strncmp(c.last, "1.000,", 6) == 0);
+		CHECK(last_field_is(c.last, '0'));   /* gap=0 */
+
+		/* Same iTOW again -> stale/duplicate, dropped (no row). */
+		CHECK(clocklog_feed(&st, cf, cfn, collect_row, &c) == 0);
+		CHECK(c.count == 1);
+
+		/* iTOW advances by exactly 1 s -> row, gap=0. */
+		put_u32(&cpl[0], 2000u);
+		cfn = ubx_frame(cf, 0x01, 0x22, cpl, 20);
+		CHECK(clocklog_feed(&st, cf, cfn, collect_row, &c) == 1);
+		CHECK(strncmp(c.last, "2.000,", 6) == 0 && last_field_is(c.last, '0'));
+
+		/* iTOW jumps 2 s (a missed second) -> row, gap=1, never interpolated. */
+		put_u32(&cpl[0], 4000u);
+		cfn = ubx_frame(cf, 0x01, 0x22, cpl, 20);
+		CHECK(clocklog_feed(&st, cf, cfn, collect_row, &c) == 1);
+		CHECK(strncmp(c.last, "4.000,", 6) == 0 && last_field_is(c.last, '1'));
+
+		/* A keepalive (n==0) yields no row. */
+		CHECK(clocklog_feed(&st, cf, 0, collect_row, &c) == 0);
+
+		/* Two NAV-CLOCKs concatenated in ONE feed: both must emit (1 s apart),
+		 * not collapse into a single row with a phantom 2 s gap. */
+		struct clocklog_state st2;
+		clocklog_init(&st2);
+		struct row_collect c2 = {{0}, 0};
+		uint8_t pair[56];
+		size_t pn = 0;
+		put_u32(&cpl[0], 5000u);
+		pn += ubx_frame(&pair[pn], 0x01, 0x22, cpl, 20);
+		put_u32(&cpl[0], 6000u);
+		pn += ubx_frame(&pair[pn], 0x01, 0x22, cpl, 20);
+		CHECK(clocklog_feed(&st2, pair, pn, collect_row, &c2) == 2);
+		CHECK(c2.count == 2 && last_field_is(c2.last, '0'));  /* 2nd row gap=0 */
 	}
 
 	/* ubx_consume: 0xFF padding skipped + a frame reassembled across two feeds */

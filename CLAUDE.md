@@ -120,6 +120,12 @@ Before any approved commit, provide the user — in the chat — with a
 - Hardware-free parser test: `python3 python/test_lbe1425.py --self-test`
   (also runs in CI on Linux). Extend it when you add a command or change a
   decode.
+- C unit + replay suite (UBX / NMEA / clocklog parsers, captured EP 0x83 frame
+  replay): `cmake -B build -DLBE_BUILD_TESTS=ON && cmake --build build &&
+  ./build/bin/lbe-tests`. Add `-DLBE_SANITIZE=address,undefined` for an
+  ASan/UBSan build. The C suite, sanitizers, and a Valgrind pass all run in CI;
+  extend `tests/` (with a `tests/fixtures/*.bin` replay where it fits) when you
+  add a command or change a decode.
 
 ## Architecture & Wire Conventions (orientation)
 

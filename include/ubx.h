@@ -18,6 +18,7 @@
  * disciplining/stability telemetry the LBE-1425 "diagnostics" view shows. */
 struct ubx_clock {
 	int      valid;
+	uint32_t itow_ms;    /* GPS time-of-week (ms); authoritative time axis */
 	int32_t  clkb_ns;    /* clock bias (ns) */
 	int32_t  clkd_nsps;  /* clock drift (ns/s) */
 	uint32_t tacc_ns;    /* time accuracy estimate (ns) */
@@ -68,5 +69,45 @@ int ubx_consume(uint8_t *buf, size_t *buf_len, size_t buf_cap,
                 const uint8_t *in, size_t in_len,
                 struct gnss_pvt *pvt, struct gnss_svinfo *sv,
                 struct ubx_clock *clk);
+
+/* --- clocklog: honesty-gated NAV-CLOCK time-series rows ---------------------
+ * Shared, hardware-free formatting + continuity logic behind `--clocklog`, so
+ * the same pipeline is exercised by the live HID loop and by replay tests. */
+
+/* Format one CSV clocklog row into out (capacity cap):
+ *   iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap
+ * iTOW_s is the u-blox time-of-week in seconds (ms fraction kept). Sentinel
+ * accuracies (0xFFFFFFFF = "unknown") are emitted as -1, never 4294967295.
+ * `valid` is 1 only when the sample is trustworthy: clk valid, a 2D/3D fix
+ * (fix_type>=2), and neither accuracy a sentinel. `gap` is passed through (set
+ * by the caller when a continuity break preceded this sample). Returns the
+ * byte count written (excluding NUL), or 0 if it would not fit. */
+int clocklog_row(char *out, size_t cap, const struct ubx_clock *clk,
+                 int fix_type, int num_sv, int gap);
+
+/* Streaming clocklog emitter. Accumulates de-framed UBX bytes and emits one CSV
+ * row per NAV-CLOCK *message* (not per feed -- two NAV-CLOCKs completing in one
+ * chunk both emit, so a healthy stream never manufactures a false gap), using
+ * iTOW as the authoritative continuity signal: a non-advancing iTOW is a
+ * stale/duplicate and is dropped; an iTOW step != 1000 ms marks an explicit
+ * gap. Decouples the honesty logic from the live HID loop so it is replayable
+ * in tests. NAV-PVT is tracked only to carry fixType/numSV into each row's
+ * trust gate. */
+struct clocklog_state {
+	uint8_t         buf[1024];
+	size_t          buf_len;
+	struct gnss_pvt pvt;
+	int             have_itow;
+	uint32_t        last_itow;
+};
+
+void clocklog_init(struct clocklog_state *s);
+
+/* Feed one de-framed UBX chunk (in[0..n), already past the [seq][len] HID
+ * header; n==0 keepalives are ignored). For every fresh NAV-CLOCK that
+ * completes, formats its CSV row and invokes emit(row, ctx). Returns the number
+ * of rows emitted. `emit` may be NULL (rows counted, not delivered). */
+int clocklog_feed(struct clocklog_state *s, const uint8_t *in, size_t n,
+                  void (*emit)(const char *row, void *ctx), void *ctx);
 
 #endif

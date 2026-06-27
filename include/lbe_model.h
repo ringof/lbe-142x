@@ -55,6 +55,11 @@ struct lbe_model_ops {
 	/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from
 	 * the EP 0x83 stream). NULL elsewhere. Loops until killed. */
 	int (*diag)(struct lbe_transport *t);
+
+	/* LBE-1425 only: CSV time-series log of NAV-CLOCK timing telemetry from
+	 * the EP 0x83 stream (one row per ~1 Hz solution). `seconds` bounds the
+	 * run; <=0 means until killed. NULL elsewhere. */
+	int (*clocklog)(struct lbe_transport *t, int seconds);
 };
 
 extern const struct lbe_model_ops lbe_ops_1420;
