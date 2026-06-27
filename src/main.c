@@ -302,6 +302,9 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(argv[i], "--status") == 0) {
 			if (lbe_get_device_status(dev, &status) == 0) {
+				char serial[64];
+				if (lbe_get_serial(dev, serial, sizeof serial) == 0)
+					printf("  Serial: %s\n", serial);
 				printf("Device Status (0x%02X):\n", status.raw_status);
 				printf("  GPS Lock: %s\n", (status.raw_status & LBE_GPS_LOCK_BIT) ? "Yes" : "No");
 				printf("  PLL Lock: %s\n", status.pll_locked ? "Yes" : "No");

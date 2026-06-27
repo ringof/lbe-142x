@@ -77,6 +77,10 @@ uint16_t lbe_get_pid(struct lbe_device *dev) {
 	return dev->pid;
 }
 
+int lbe_get_serial(struct lbe_device *dev, char *out, size_t n) {
+	return lbe_transport_serial(dev->transport, out, n);
+}
+
 uint32_t lbe_max_freq(struct lbe_device *dev, int output) {
 	/* The 1425 is the only model with asymmetric per-output limits; every
 	 * other model is symmetric, so fall back to the ops vtable's max_freq. */

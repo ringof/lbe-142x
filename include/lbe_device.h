@@ -6,6 +6,7 @@
 #define LBE_DEVICE_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 struct lbe_device;
 
@@ -43,6 +44,10 @@ enum lbe_model lbe_get_model(struct lbe_device* dev);
 /* The exact USB product id the device enumerated with. Lets callers
  * distinguish models that share an ops vtable (1421/1423/1425). */
 uint16_t lbe_get_pid(struct lbe_device* dev);
+
+/* Copy the device's USB serial number (NUL-terminated) into out. Returns 0 if
+ * a serial was available, -1 otherwise (out is set empty). */
+int lbe_get_serial(struct lbe_device* dev, char* out, size_t n);
 
 /* Maximum settable frequency in Hz for the given output (1 or 2). Most
  * models are symmetric, but the LBE-1425 caps OUT1 at 800 MHz while OUT2
