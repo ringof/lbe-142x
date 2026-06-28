@@ -1,6 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2024-2026 Benjamin Vernoux
+ * Copyright (c) 2026 Dave Goncalves
  */
 #include "lbe_common.h"
 #include "lbe_model.h"
@@ -555,6 +556,27 @@ const struct lbe_model_ops lbe_ops_1421 = {
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
 	.monitor            = m1421_monitor,
+	.dual_output        = 1,
+};
+
+/* 1423 shares the 1421 wire format and ops; only the display name differs. Its
+ * own vtable entry keeps "which device / what can it do" answered solely by the
+ * vtable (no PID literal in the CLI). */
+const struct lbe_model_ops lbe_ops_1423 = {
+	.name               = "1423 dual output",
+	.max_freq_out1      = LBE_1421_MAX_FREQ,
+	.max_freq_out2      = LBE_1421_MAX_FREQ,
+	.init               = NULL,
+	.get_status         = m1421_get_status,
+	.set_frequency      = m1421_set_frequency,
+	.set_frequency_temp = m1421_set_frequency_temp,
+	.set_outputs_enable = m1421_set_outputs_enable,
+	.blink_leds         = m1421_blink_leds,
+	.set_pll_mode       = m1421_set_pll_mode,
+	.set_1pps           = m1421_set_1pps,
+	.set_power_level    = m1421_set_power_level,
+	.monitor            = m1421_monitor,
+	.dual_output        = 1,
 };
 
 /* LBE-1425: the 1421 dual-output protocol verbatim, plus the 1425's extra
@@ -580,4 +602,6 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.diag               = m1425_diag,
 	.clocklog           = m1425_clocklog,
 	.gps_info           = m1425_gps_info,
+	.dual_output        = 1,
+	.has_antenna_current = 1,
 };

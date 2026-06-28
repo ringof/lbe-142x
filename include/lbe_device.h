@@ -1,6 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2024-2026 Benjamin Vernoux
+ * Copyright (c) 2026 Dave Goncalves
  */
 #ifndef LBE_DEVICE_H
 #define LBE_DEVICE_H
@@ -9,6 +10,7 @@
 #include <stddef.h>
 
 struct lbe_device;
+struct lbe_model_ops;
 
 enum lbe_model {
 	LBE_1420 = 0,
@@ -52,6 +54,11 @@ enum lbe_model lbe_get_model(struct lbe_device* dev);
 /* The exact USB product id the device enumerated with. Lets callers
  * distinguish models that share an ops vtable (1421/1423/1425). */
 uint16_t lbe_get_pid(struct lbe_device* dev);
+
+/* The device's capability vtable -- the single source of "what can this model
+ * do" for the CLI (display name, per-output caps, capability traits, and the
+ * NULL-able op pointers). Prefer this over PID/enum equality for gating. */
+const struct lbe_model_ops* lbe_device_ops(const struct lbe_device* dev);
 
 /* Copy the device's USB serial number (NUL-terminated) into out. Returns 0 if
  * a serial was available, -1 otherwise (out is set empty). */

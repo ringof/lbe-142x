@@ -1,6 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2024-2026 Benjamin Vernoux
+ * Copyright (c) 2026 Dave Goncalves
  */
 #include "lbe_device.h"
 #include "lbe_common.h"
@@ -51,10 +52,13 @@ struct lbe_device *lbe_open_device(uint16_t preferred_pid) {
 		dev->ops = &lbe_ops_1425;
 		break;
 	case PID_LBE_1423:
+		/* 1423 shares the 1421 wire format but has its own vtable entry so its
+		 * identity (and display name) comes from the ops, not a PID literal. */
+		dev->model = LBE_1421_DUALOUT;
+		dev->ops = &lbe_ops_1423;
+		break;
 	case PID_LBE_1421:
 	default:
-		/* 1423 shares the 1421 wire format until we capture evidence
-		 * of a difference. */
 		dev->model = LBE_1421_DUALOUT;
 		dev->ops = &lbe_ops_1421;
 		break;
@@ -76,6 +80,10 @@ enum lbe_model lbe_get_model(struct lbe_device *dev) {
 
 uint16_t lbe_get_pid(struct lbe_device *dev) {
 	return dev->pid;
+}
+
+const struct lbe_model_ops *lbe_device_ops(const struct lbe_device *dev) {
+	return dev->ops;
 }
 
 int lbe_get_serial(struct lbe_device *dev, char *out, size_t n) {

@@ -1,10 +1,13 @@
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2024-2026 Benjamin Vernoux
+ * Copyright (c) 2026 Dave Goncalves
  */
 #include "lbe_device.h"
+#include "lbe_model.h"
 #include "lbe_common.h"
 #include "lbe_platform.h"
+#include "cli_view.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,132 +34,6 @@ static const char *status_byte_name(int off) {
 	}
 }
 
-/* Single source of truth for the u-blox CFG-NAV5 dynamic platform model
- * (value <-> name). `token` is the lowercase CLI keyword (NULL = settable by
- * numeric value only, matching the vendor UI, which exposes no name for it);
- * `display` is the label shown by --status. */
-static const struct { uint8_t value; const char *token; const char *display; } DYNMODEL[] = {
-	{0, "portable",   "Portable"},
-	{2, "stationary", "Stationary"},
-	{3, "pedestrian", "Pedestrian"},
-	{4, "automotive", "Automotive"},
-	{5, "sea",        "Sea"},
-	{6, NULL,         "Airborne<1g"},
-	{7, NULL,         "Airborne<2g"},
-	{8, "airborne",   "Airborne<4g"},
-};
-
-/* Build the "portable|stationary|..." keyword list (the settable-by-name
- * models) once, for the --help text and the --dynmodel error message. Returns
- * buf. */
-static const char *dynmodel_token_list(char *buf, size_t n) {
-	size_t off = 0;
-	for (size_t i = 0; i < sizeof DYNMODEL / sizeof DYNMODEL[0]; i++) {
-		if (!DYNMODEL[i].token) continue;
-		int w = snprintf(buf + off, n - off, "%s%s",
-		                 off ? "|" : "", DYNMODEL[i].token);
-		if (w < 0 || (size_t)w >= n - off) break;
-		off += (size_t)w;
-	}
-	return buf;
-}
-
-void print_usage(int model, int is_1425) {
-	int generic = (model == MODEL_GENERIC);
-	int is_1420 = (model == LBE_1420);
-	int is_mini = (model == LBE_MINI);
-	int is_1421 = (model == LBE_1421_DUALOUT);
-	/* OUT1 cap. The 1425 caps OUT1 at 800 MHz (its 1PPS output) -- the rest
-	 * of the 1421 family go to 1.4 GHz. */
-	unsigned long mf =
-		is_1425 ? LBE_1425_OUT1_MAX_FREQ :
-		is_1420 ? LBE_1420_MAX_FREQ :
-		is_mini ? LBE_MINI_MAX_FREQ :
-		          LBE_1421_MAX_FREQ;
-
-	printf("Usage: lbe-142x [OPTIONS]\n");
-	printf("Options:\n");
-	printf("  --help                 Show this help\n");
-	printf("  --pid <0xNNNN>         Select a specific LBE device when more than one is attached\n");
-	printf("                         (0x2443=1420, 0x2444=1421, 0x226f=1423, 0x2269=1425, 0x2211=Mini)\n");
-
-	if (generic)
-		printf("  --f1 <Hz>              Set OUT1 frequency, save to flash (1420 <=%lu, 1421/1423 <=%lu, 1425 OUT1 <=%lu, Mini <=%lu)\n",
-		       LBE_1420_MAX_FREQ, LBE_1421_MAX_FREQ, LBE_1425_OUT1_MAX_FREQ, LBE_MINI_MAX_FREQ);
-	else
-		printf("  --f1 <Hz>              Set OUT1 frequency (1-%lu Hz), save to flash\n", mf);
-
-	if (generic || !is_mini)
-		printf("  --f1t <Hz>             Set OUT1 temporary frequency%s\n",
-		       generic ? " (not supported on Mini)" : "");
-
-	if (generic || is_1421) {
-		printf("  --f2 <Hz>              Set OUT2 frequency, save to flash%s\n",
-		       generic ? " (LBE-1421/1423/1425)" : "");
-		printf("  --f2t <Hz>             Set OUT2 temporary frequency%s\n",
-		       generic ? " (LBE-1421/1423/1425)" : "");
-	}
-
-	printf("  --out <0|1>            Enable or disable outputs\n");
-
-	if (generic || !is_mini)
-		printf("  --pll <0|1>            Set PLL(0) or FLL(1) mode%s\n",
-		       generic ? " (not supported on Mini)" : "");
-
-	if (generic || is_1421)
-		printf("  --pps <0|1>            Enable or disable 1PPS on OUT1%s\n",
-		       generic ? " (LBE-1421/1423/1425)" : "");
-
-	printf("  --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)\n");
-
-	if (generic || is_1421)
-		printf("  --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1)%s\n",
-		       generic ? " (LBE-1421/1423/1425)" : "");
-
-	if (generic || is_mini)
-		printf("  --drive <8|16|24|32>   Set OUT1 drive strength in mA%s\n",
-		       generic ? " (Mini only)" : "");
-
-	if (generic || is_1425) {
-		printf("  --gnss <0xNN>          Set GNSS constellation bitmask"
-		       " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
-		       generic ? " (LBE-1425 only)" : "");
-		char dm_tokens[96];
-		printf("  --dynmodel <model>     Set u-blox dynamic model (%s)%s\n",
-		       dynmodel_token_list(dm_tokens, sizeof dm_tokens),
-		       generic ? " (LBE-1425 only)" : "");
-		printf("  --nmea <0|1>           Enable or disable NMEA output%s\n",
-		       generic ? " (LBE-1425 only)" : "");
-		printf("  --diag                 Live UBX diagnostics (CNR histogram + clock"
-		       " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
-		printf("  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting"
-		       " (Ctrl-C, or run N s)%s\n", generic ? " (LBE-1425 only)" : "");
-	}
-
-	printf("  --blink                Blink output LED(s) for 3 seconds\n");
-	printf("  --status               Display current device status\n");
-
-	if (generic || is_1421)
-		printf("  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
-		       generic ? " (LBE-142x)" : "");
-
-	if (generic || is_1421)
-		printf("  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)%s\n",
-		       generic ? " (LBE-142x)" : "");
-
-	if (generic || is_mini || is_1421) {
-		printf("  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
-		       generic ? " (Mini: UBX; 1421/1423/1425: NMEA via CDC)" : "");
-	}
-	if (generic || is_1421) {
-		printf("  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
-		       generic ? " (LBE-1421/1423/1425)" : "");
-	}
-	if (generic || is_mini || is_1425) {
-		printf("  --gps-info             Print u-blox GPS module version + antenna status%s\n",
-		       generic ? " (Mini / LBE-1425)" : "");
-	}
-}
 
 int main(int argc, char *argv[]) {
 	struct lbe_device *dev;
@@ -182,42 +59,33 @@ int main(int argc, char *argv[]) {
 	}
 
 	dev = lbe_open_device(preferred_pid);
-	int is_1425 = dev && lbe_get_pid(dev) == PID_LBE_1425;
 
 	if (help_requested) {
 		/* If a device is attached, show the help tailored to it. Else
 		 * show the generic help covering every supported model. */
-		print_usage(dev ? (int)lbe_get_model(dev) : MODEL_GENERIC, is_1425);
+		lbe_print_usage(stdout, dev ? (int)lbe_get_model(dev) : MODEL_GENERIC,
+		                dev ? lbe_device_ops(dev) : NULL);
 		if (dev) lbe_close_device(dev);
 		return 0;
 	}
 
 	if (!dev) {
 		fprintf(stderr, "\n");
-		print_usage(MODEL_GENERIC, 0);
+		lbe_print_usage(stdout, MODEL_GENERIC, NULL);
 		return 1;
 	}
 
 	model = lbe_get_model(dev);
 
 	if (argc == 1) {
-		print_usage(model, is_1425);
+		lbe_print_usage(stdout, model, lbe_device_ops(dev));
 		lbe_close_device(dev);
 		return 1;
 	}
 
-	/* Several dual-output models (1421/1423/1425) share the LBE_1421_DUALOUT
-	 * ops vtable, so name the device from its actual PID rather than the
-	 * coarse model enum. */
-	const char *model_name;
-	switch (lbe_get_pid(dev)) {
-	case PID_LBE_1420: model_name = "1420"; break;
-	case PID_LBE_1421: model_name = "1421 dual output"; break;
-	case PID_LBE_1423: model_name = "1423 dual output"; break;
-	case PID_LBE_1425: model_name = "1425 dual output"; break;
-	case PID_LBE_MINI: model_name = "Mini"; break;
-	default:           model_name = "142x"; break;
-	}
+	/* Name the device from its capability vtable -- the single source of model
+	 * identity (1421/1423/1425 each have their own ops entry). */
+	const char *model_name = lbe_device_ops(dev)->name;
 	fprintf(stderr, "Connected to LBE-%s\n", model_name);
 
 	for (int i = 1; i < argc; i++) {
@@ -227,7 +95,7 @@ int main(int argc, char *argv[]) {
 				int out_no = (argv[i][3] == '1') ? 1 : 2;
 				int temp = (argv[i][4] == 't');
 				
-				if (out_no == 2 && (model == LBE_1420 || model == LBE_MINI)) {
+				if (out_no == 2 && !lbe_device_ops(dev)->dual_output) {
 					fprintf(stderr, "This model does not support output 2\n");
 					continue;
 				}
@@ -276,7 +144,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		} else if (strcmp(argv[i], "--pps") == 0) {
-			if (model != LBE_1421_DUALOUT) {
+			if (!lbe_device_ops(dev)->dual_output) {
 				fprintf(stderr, "1PPS on OUT1 control is only supported on LBE-1421/1423/1425\n");
 				continue;
 			}
@@ -293,7 +161,7 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(argv[i], "--pwr1") == 0 || strcmp(argv[i], "--pwr2") == 0) {
 			int out_no = argv[i][5] - '0';
-			if (out_no == 2 && (model == LBE_1420 || model == LBE_MINI)) {
+			if (out_no == 2 && !lbe_device_ops(dev)->dual_output) {
 				fprintf(stderr, "This model does not support output 2\n");
 				continue;
 			}
@@ -329,22 +197,12 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(argv[i], "--dynmodel") == 0) {
 			if (i + 1 < argc) {
 				const char *a = argv[++i];
-				int dynmodel = -1;
-				for (size_t k = 0; k < sizeof DYNMODEL / sizeof DYNMODEL[0]; k++)
-					if (DYNMODEL[k].token && strcmp(a, DYNMODEL[k].token) == 0) {
-						dynmodel = DYNMODEL[k].value;
-						break;
-					}
-				if (dynmodel < 0) {   /* not a keyword -- try a raw u-blox value */
-					char *end;
-					unsigned long v = strtoul(a, &end, 0);
-					if (*end == '\0' && v <= 0xFF) dynmodel = (int)v;
-				}
-				if (dynmodel < 0) {
+				uint8_t dynmodel;
+				if (lbe_dynmodel_parse(a, &dynmodel) != 0) {
 					char dm_tokens[96];
 					fprintf(stderr, "Invalid dynamic model: %s (%s or a u-blox value)\n",
-					        a, dynmodel_token_list(dm_tokens, sizeof dm_tokens));
-				} else if (lbe_set_dynmodel(dev, (uint8_t)dynmodel) == 0) {
+					        a, lbe_dynmodel_token_list(dm_tokens, sizeof dm_tokens));
+				} else if (lbe_set_dynmodel(dev, dynmodel) == 0) {
 					printf("  Set dynamic model to %d\n", dynmodel);
 					changed = 1;
 				}
@@ -374,73 +232,7 @@ int main(int argc, char *argv[]) {
 				char serial[64];
 				if (lbe_get_serial(dev, serial, sizeof serial) == 0)
 					printf("  Serial: %s\n", serial);
-				printf("Device Status (0x%02X):\n", status.raw_status);
-				printf("  GPS Lock: %s\n", (status.raw_status & LBE_GPS_LOCK_BIT) ? "Yes" : "No");
-				printf("  PLL Lock: %s\n", status.pll_locked ? "Yes" : "No");
-				/* Antenna status is not decodable on the Mini feature
-				 * report -- the vendor UI does not expose it either. */
-				if (model != LBE_MINI) {
-					if (!status.antenna_ok) {
-						printf("  Antenna: Short Circuit\n");
-					} else if (lbe_get_pid(dev) == PID_LBE_1425) {
-						/* The 1425 reports antenna bias current, so we can tell
-						 * "no antenna" (0 mA) from a healthy one -- the bit alone
-						 * only flags a short. */
-						if (status.antenna_current_ma == 0)
-							printf("  Antenna: Not connected (0 mA)\n");
-						else
-							printf("  Antenna: OK (%u mA)\n", status.antenna_current_ma);
-					} else {
-						printf("  Antenna: OK\n");
-					}
-				}
-				printf("  Output(s) Enabled: %s\n", status.outputs_enabled ? "Yes" : "No");
-				printf("  OUT1 Frequency: %u Hz\n", status.frequency1);
-				if (model == LBE_MINI) {
-					printf("  OUT1 Drive Strength: %umA\n", status.out1_drive_ma);
-					printf("  Signal loss count: %u\n", status.signal_loss_count);
-				} else {
-					printf("  OUT1 Power Level: %s\n", status.out1_power_low ? "Low" : "Normal");
-				}
-
-				if (model == LBE_1421_DUALOUT) {
-					printf("  OUT2 Frequency: %u Hz\n", status.frequency2);
-					printf("  OUT2 Power Level: %s\n", status.out2_power_low ? "Low" : "Normal");
-
-					printf("  1PPS on OUT1: %s\n", status.pps_enabled ? "Enabled" : "Disabled");
-				}
-				/* Mini has no FLL/PLL mode toggle. */
-				if (model != LBE_MINI) {
-					printf("  Mode: %s\n", status.fll_enabled ? "FLL" : "PLL");
-				}
-				/* 1425 echoes the GNSS mask (byte 21) and dynamic model
-				 * (byte 22) in its status report -- show the live config. */
-				if (lbe_get_pid(dev) == PID_LBE_1425) {
-					static const struct { uint8_t bit; const char *name; } gn[] = {
-						{LBE_1425_GNSS_GPS, "GPS"}, {LBE_1425_GNSS_SBAS, "SBAS"},
-						{LBE_1425_GNSS_GALILEO, "Galileo"}, {LBE_1425_GNSS_BEIDOU, "BeiDou"},
-						{LBE_1425_GNSS_IMES, "IMES"}, {LBE_1425_GNSS_QZSS, "QZSS"},
-						{LBE_1425_GNSS_GLONASS, "GLONASS"},
-					};
-					uint8_t mask = status.raw[21];
-					printf("  GNSS: 0x%02X (", mask);
-					int first = 1;
-					for (size_t g = 0; g < sizeof gn / sizeof gn[0]; g++)
-						if (mask & gn[g].bit) {
-							printf("%s%s", first ? "" : " ", gn[g].name);
-							first = 0;
-						}
-					printf("%s)\n", first ? "none" : "");
-					const char *dm = "?";
-					for (size_t k = 0; k < sizeof DYNMODEL / sizeof DYNMODEL[0]; k++)
-						if (DYNMODEL[k].value == status.raw[22]) {
-							dm = DYNMODEL[k].display;
-							break;
-						}
-					printf("  Dynamic model: %s (%u)\n", dm, status.raw[22]);
-					printf("  NMEA output: %s\n",
-					       status.raw[24] ? "Enabled" : "Disabled");
-				}
+				lbe_format_status(stdout, model, lbe_device_ops(dev), &status);
 			}
 		} else if (strcmp(argv[i], "--statlog") == 0) {
 			/* Poll the status report ~1 Hz and print the lock state plus the
@@ -475,7 +267,7 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(argv[i], "--probe-op") == 0) {
 			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
 			 * and report which status-report bytes it changed. */
-			if (model != LBE_1421_DUALOUT) {
+			if (!lbe_device_ops(dev)->dual_output) {
 				fprintf(stderr, "--probe-op needs the 1421-family status report\n");
 				continue;
 			}
@@ -565,7 +357,7 @@ int main(int argc, char *argv[]) {
 			i++;  /* consumed in the pre-scan above */
 		} else {
 			fprintf(stderr, "Unknown option: %s\n", argv[i]);
-			print_usage(model, is_1425);
+			lbe_print_usage(stdout, model, lbe_device_ops(dev));
 		}
 	}
 
