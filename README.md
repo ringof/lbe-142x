@@ -440,5 +440,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+- **[Benjamin Vernoux](https://github.com/bvernoux)** — author of the original
+  `lbe-142x` configuration tool and the large majority of this codebase. This
+  fork builds directly on his work; the bulk of the architecture, wire protocol,
+  and tooling here is his, and we owe a substantial debt to it.
 - Leo Bodnar Electronics for the LBE-142x devices and documentation / protocol
 - Simon Unsworth (https://github.com/simontheu/lbe-1420) for the initial implementation reference

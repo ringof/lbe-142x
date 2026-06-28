@@ -1,6 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2024-2026 Benjamin Vernoux
+ * Copyright (c) 2026 Dave Goncalves
  */
 #ifndef GNSS_VIEW_H
 #define GNSS_VIEW_H
