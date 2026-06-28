@@ -24,9 +24,21 @@ static int d_tu(struct lbe_transport *t, uint8_t u) { (void)t; (void)u; return 0
 static int d_ti(struct lbe_transport *t, int i) { (void)t; (void)i; return 0; }
 static int d_tum(struct lbe_transport *t, unsigned m) { (void)t; (void)m; return 0; }
 
+/* tmpfile() is flagged C4996 (deprecated) by MSVC /WX; use its non-deprecated
+ * tmpfile_s() there, plain tmpfile() elsewhere. */
+static FILE *open_tmp(void) {
+#if defined(_MSC_VER)
+	FILE *f = NULL;
+	return tmpfile_s(&f) == 0 ? f : NULL;
+#else
+	return tmpfile();
+#endif
+}
+
 static void cap_usage(char *buf, size_t cap, int model,
                       const struct lbe_model_ops *ops) {
-	FILE *f = tmpfile();
+	FILE *f = open_tmp();
+	if (!f) { buf[0] = '\0'; return; }
 	lbe_print_usage(f, model, ops);
 	long n = ftell(f);
 	if (n < 0) n = 0;
@@ -40,7 +52,8 @@ static void cap_usage(char *buf, size_t cap, int model,
 static void cap_status(char *buf, size_t cap, int model,
                        const struct lbe_model_ops *ops,
                        const struct lbe_status *s) {
-	FILE *f = tmpfile();
+	FILE *f = open_tmp();
+	if (!f) { buf[0] = '\0'; return; }
 	lbe_format_status(f, model, ops, s);
 	long n = ftell(f);
 	if (n < 0) n = 0;
