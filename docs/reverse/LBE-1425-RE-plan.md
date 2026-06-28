@@ -1,6 +1,5 @@
 <!--
 SPDX-License-Identifier: MIT
-Copyright (c) 2024-2026 Benjamin Vernoux
 -->
 # LBE-1425 reverse-engineering plan
 
