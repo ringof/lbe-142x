@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 /* Hardware-free unit tests for the pure parsing units (src/ubx.c, src/nmea.c).
  * Run via `ctest` or directly; exits nonzero if any check fails. */

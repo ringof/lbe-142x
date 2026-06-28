@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 /* CLI presentation: --help and --status rendering, plus the dynamic-model
  * table they share with the --dynmodel parser. Pure functions of (model, ops,

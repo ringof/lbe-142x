@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 #ifndef LBE_PLATFORM_H
 #define LBE_PLATFORM_H

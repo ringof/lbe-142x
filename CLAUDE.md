@@ -138,5 +138,9 @@ Before any approved commit, provide the user — in the chat — with a
 - Config goes over HID Feature reports on interface 2; **command opcode is
   payload byte 0**; report size is `LBE_REPORT_SIZE` (60). The 1425 reuses the
   1421 wire format plus its own opcodes.
-- Every source/header carries the SPDX MIT + copyright header. C99, tabs for
+- Every source/header carries only the SPDX identifier
+  (`SPDX-License-Identifier: MIT`) -- **no per-file copyright lines**. Copyright
+  and authorship live solely in the top-level `LICENSE` file. (Per-file
+  copyright was error-prone and led to misattribution; see issue history.) Do
+  not re-add `Copyright (c) ...` lines to source headers. C99, tabs for
   indentation.

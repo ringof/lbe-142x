@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024-2026 Benjamin Vernoux
 #
 # Reverse-engineering helper for LBE-142x USB captures.
 #
