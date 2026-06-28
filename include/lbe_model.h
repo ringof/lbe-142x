@@ -60,10 +60,25 @@ struct lbe_model_ops {
 	 * the EP 0x83 stream (one row per ~1 Hz solution). `seconds` bounds the
 	 * run; <=0 means until killed. NULL elsewhere. */
 	int (*clocklog)(struct lbe_transport *t, int seconds);
+
+	/* --- capability traits ------------------------------------------------
+	 * Capabilities that don't map cleanly onto a NULL-able op pointer, so the
+	 * CLI can gate help/status off the vtable instead of PID/enum literals. */
+
+	/* Has a second output (OUT2). Set on the dual-output 1421/1423/1425; 0 on
+	 * single-output 1420/Mini. Gates --f2/--f2t/--pwr2/--pps/--statlog/
+	 * --probe-op/--port help and the OUT2 / 1PPS status rows. */
+	int dual_output;
+
+	/* Reports antenna bias current (status byte 23, mA) so "no antenna" (0 mA)
+	 * is distinguishable from a healthy one -- the short-circuit bit alone
+	 * can't. Set on the 1425; 0 elsewhere. */
+	int has_antenna_current;
 };
 
 extern const struct lbe_model_ops lbe_ops_1420;
 extern const struct lbe_model_ops lbe_ops_1421;
+extern const struct lbe_model_ops lbe_ops_1423;
 extern const struct lbe_model_ops lbe_ops_1425;
 extern const struct lbe_model_ops lbe_ops_mini;
 

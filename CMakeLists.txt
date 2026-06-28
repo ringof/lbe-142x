@@ -47,6 +47,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 # Source files
 set(SOURCES
     src/main.c
+    src/cli_view.c
     src/lbe_device.c
     src/lbe_platform.c
     src/model_1420.c
@@ -241,8 +242,10 @@ if(LBE_BUILD_TESTS)
         tests/test_ubx.c
         tests/test_nmea.c
         tests/test_replay.c
+        tests/test_cli.c
         src/ubx.c
-        src/nmea.c)
+        src/nmea.c
+        src/cli_view.c)
     target_include_directories(lbe-tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_compile_definitions(lbe-tests PRIVATE
         LBE_FIXTURE_DIR="${PROJECT_SOURCE_DIR}/tests/fixtures")

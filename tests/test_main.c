@@ -12,11 +12,13 @@ int g_test_fail = 0;
 void run_ubx_tests(void);
 void run_nmea_tests(void);
 void run_replay_tests(void);
+void run_cli_tests(void);
 
 int main(void) {
 	run_ubx_tests();
 	run_nmea_tests();
 	run_replay_tests();
+	run_cli_tests();
 	printf("\n%d checks, %d failed\n", g_test_total, g_test_fail);
 	return g_test_fail ? 1 : 0;
 }
