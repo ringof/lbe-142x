@@ -1,7 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
- * Copyright (c) 2026 Dave Goncalves
  */
 #include "lbe_device.h"
 #include "lbe_model.h"

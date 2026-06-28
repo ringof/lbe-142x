@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 /* Hardware-free tests for the CLI presentation layer (src/cli_view.c): prove
  * that --help and --status gating is correct for every model, driven purely by

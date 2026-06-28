@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024-2026 Benjamin Vernoux
 #
 # Standalone pcapng + usbmon decoder for LBE-142x reverse engineering.
 # NO tshark / wireshark / pcap library needed -- parses the pcapng blocks and

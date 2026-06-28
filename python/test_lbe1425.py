@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024-2026 Benjamin Vernoux
 #
 # Integration test for the LBE-1425 CLI. Exercises every command we'd
 # reasonably send and checks for bugs several ways:

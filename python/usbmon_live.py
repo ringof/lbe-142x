@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2024-2026 Benjamin Vernoux
 #
 # Live LBE-142x HID command decoder. Reads the kernel usbmon *text* stream
 # and prints each HID Feature report (SET_REPORT / GET_REPORT) with a

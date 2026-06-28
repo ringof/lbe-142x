@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 #include "nmea.h"
 #include "gnss_view.h"

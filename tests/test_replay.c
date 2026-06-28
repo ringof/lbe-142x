@@ -1,6 +1,5 @@
 /*
  * SPDX-License-Identifier: MIT
- * Copyright (c) 2024-2026 Benjamin Vernoux
  */
 /* Replay real captured EP 0x83 diagnostics frames (the .bin files under
  * tests/fixtures, raw 64-byte HID frames from a usbmon capture of --diag on an
