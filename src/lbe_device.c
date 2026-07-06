@@ -132,6 +132,10 @@ int lbe_set_pll_mode(struct lbe_device *dev, int fll_mode) {
 }
 
 int lbe_set_1pps(struct lbe_device *dev, int enable) {
+	if (!dev->ops->set_1pps) {
+		fprintf(stderr, "--pps is not supported on this model\n");
+		return -1;
+	}
 	return dev->ops->set_1pps(dev->transport, enable);
 }
 

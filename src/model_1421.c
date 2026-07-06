@@ -531,11 +531,11 @@ int lbe_shared_gps_info(struct lbe_transport *t) {
 				 * 8=freqPeriod(u32), 12=freqPeriodLock(u32),
 				 * 16=pulseLenRatio(u32), 20=pulseLenRatioLock(u32),
 				 * 24=userConfigDelay(i32), 28=flags(u32). */
-				uint32_t freq = p[8] | (p[9]<<8) | (p[10]<<16) | (p[11]<<24);
-				uint32_t freqL = p[12] | (p[13]<<8) | (p[14]<<16) | (p[15]<<24);
-				uint32_t pulse = p[16] | (p[17]<<8) | (p[18]<<16) | (p[19]<<24);
-				uint32_t pulseL = p[20] | (p[21]<<8) | (p[22]<<16) | (p[23]<<24);
-				uint32_t flags = p[28] | (p[29]<<8) | (p[30]<<16) | (p[31]<<24);
+				uint32_t freq = p[8] | (p[9]<<8) | (p[10]<<16) | ((uint32_t)p[11]<<24);
+				uint32_t freqL = p[12] | (p[13]<<8) | (p[14]<<16) | ((uint32_t)p[15]<<24);
+				uint32_t pulse = p[16] | (p[17]<<8) | (p[18]<<16) | ((uint32_t)p[19]<<24);
+				uint32_t pulseL = p[20] | (p[21]<<8) | (p[22]<<16) | ((uint32_t)p[23]<<24);
+				uint32_t flags = p[28] | (p[29]<<8) | (p[30]<<16) | ((uint32_t)p[31]<<24);
 				int16_t cable = (int16_t)(p[4] | (p[5] << 8));
 				int is_freq = (flags >> 3) & 1;   /* bit 3: isFreq */
 				int is_len  = (flags >> 4) & 1;   /* bit 4: isLength */
