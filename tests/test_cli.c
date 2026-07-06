@@ -92,6 +92,7 @@ static struct lbe_model_ops fix_1425(void) {
 	o.dual_output = 1; o.has_antenna_current = 1; o.monitor = d_t;
 	o.set_gnss = d_tu; o.set_dynmodel = d_tu; o.set_nmea = d_ti;
 	o.diag = d_t; o.clocklog = d_ti; o.gps_info = d_t;
+	o.gnss_beidou_exclusive = 1;
 	return o;
 }
 static struct lbe_model_ops fix_mini(void) {
@@ -146,6 +147,7 @@ void run_cli_tests(void) {
 	   && !has(b, "--drive") && !has(b, "--nmea"));
 	CHECK(has(b, "--gnss") && has(b, "--dynmodel") && has(b, "--diag")
 	   && has(b, "--clocklog") && has(b, "--monitor") && has(b, "--gps-info"));
+	CHECK(has(b, "--port"));   /* 1420 uses CDC NMEA monitor */
 	CHECK(has(b, "--f1t") && has(b, "--pll"));   /* non-Mini shows these */
 	want_cap(cap, sizeof cap, (unsigned long)LBE_1420_MAX_FREQ);
 	CHECK(has(b, cap));
@@ -154,6 +156,7 @@ void run_cli_tests(void) {
 	o = fix_mini();
 	cap_usage(b, sizeof b, LBE_MINI, &o);
 	CHECK(has(b, "--drive") && has(b, "--gps-info") && has(b, "--monitor"));
+	CHECK(!has(b, "--port"));   /* Mini monitor reads UBX from HID, not CDC */
 	CHECK(!has(b, "--f2 ") && !has(b, "--pps") && !has(b, "--gnss") && !has(b, "--statlog"));
 	CHECK(!has(b, "--pll") && !has(b, "--f1t"));   /* "not supported on Mini" */
 	want_cap(cap, sizeof cap, (unsigned long)LBE_MINI_MAX_FREQ);

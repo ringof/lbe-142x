@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 #include "gnss_view.h"
 
 /* Shared u-blox UBX decoding. The LBE-Mini streams UBX out of its HID
@@ -51,6 +52,10 @@ int ubx_next(const uint8_t *buf, size_t len, size_t *off,
 /* Fletcher-8 checksum over a full UBX frame (sync..payload..ck), total bytes.
  * Returns 1 if the two trailing checksum bytes match. */
 int ubx_checksum_ok(const uint8_t *msg, size_t total);
+
+/* Print a UBX-MON-VER response: SW version (30 bytes), HW version (10 bytes),
+ * and any 30-byte extension strings. No-op if plen < 40. */
+void ubx_print_mon_ver(FILE *out, const uint8_t *p, uint16_t plen);
 
 /* Decode individual UBX payloads (pointer past the 6-byte header, payload
  * length n). No-ops if n is too short. */

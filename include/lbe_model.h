@@ -73,6 +73,10 @@ struct lbe_model_ops {
 	 * distinguishable from a healthy one -- the short-circuit bit alone
 	 * can't. Set on the 1420 (byte 12) and 1425 (byte 23); 0 elsewhere. */
 	int has_antenna_current;
+
+	/* M8 (1425) has a 3-concurrent-GNSS limit: BeiDou is mutually
+	 * exclusive with GPS/SBAS/Galileo. M10 (1420) has no such limit. */
+	int gnss_beidou_exclusive;
 };
 
 /* Shared ops used by both the 1420 and 1425 vtables (defined in model_1421.c).
