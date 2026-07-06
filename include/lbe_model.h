@@ -38,11 +38,11 @@ struct lbe_model_ops {
 	int (*set_drive_ma)(struct lbe_transport *t, unsigned ma);
 
 	/* Interactive GPS monitor (Ctrl-C to exit). Mini parses UBX from HID;
-	 * 1421/1423/1425 parse NMEA from the CDC port. NULL means "unsupported". */
+	 * 1420/1421/1423/1425 parse NMEA from the CDC port. NULL means "unsupported". */
 	int (*monitor)(struct lbe_transport *t);
 
-	/* One-shot UBX-MON-VER poll (u-blox SW/HW version strings). Mini
-	 * only; NULL elsewhere. Prints to stdout, returns 0 on success. */
+	/* One-shot UBX info poll (MON-VER, CFG-GNSS, CFG-TP5). Mini / 1420
+	 * / 1425; NULL elsewhere. Prints to stdout, returns 0 on success. */
 	int (*gps_info)(struct lbe_transport *t);
 
 	/* 1420/1425 (NULL elsewhere). GNSS constellation enable bitmask,
@@ -69,9 +69,9 @@ struct lbe_model_ops {
 	 * --probe-op/--port help and the OUT2 / 1PPS status rows. */
 	int dual_output;
 
-	/* Reports antenna bias current (status byte 23, mA) so "no antenna" (0 mA)
-	 * is distinguishable from a healthy one -- the short-circuit bit alone
-	 * can't. Set on the 1425; 0 elsewhere. */
+	/* Reports antenna bias current (mA) so "no antenna" (0 mA) is
+	 * distinguishable from a healthy one -- the short-circuit bit alone
+	 * can't. Set on the 1420 (byte 12) and 1425 (byte 23); 0 elsewhere. */
 	int has_antenna_current;
 };
 

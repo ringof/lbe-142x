@@ -126,12 +126,13 @@ static int m1421_set_power_level(struct lbe_transport *t, int output, int low) {
 	return send_cmd(t, opcode, &arg, 1, 1);
 }
 
-/* --- LBE-1425-only commands ---------------------------------------------
+/* --- LBE-1425-specific opcodes ------------------------------------------
  * Same SET_REPORT feature-report transport as the rest of the 1421 family
  * (opcode in payload byte 0, arg in byte 1). Confirmed against a vendor-tool
  * USB capture; see docs/reverse/LBE-1425-config-v1.10.md. Wired into
  * lbe_ops_1425 only, so 1421/1423 never emit these opcodes (which would mean
- * something else on those models). */
+ * something else on those models). The 1420 has equivalent GNSS/dynModel ops
+ * at different opcode numbers in model_1420.c. */
 static int m1425_set_gnss(struct lbe_transport *t, uint8_t mask) {
 	return send_cmd(t, LBE_1425_SET_GNSS, &mask, 1, 1);
 }

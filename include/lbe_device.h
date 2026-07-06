@@ -94,7 +94,8 @@ int lbe_set_drive_ma(struct lbe_device* dev, unsigned ma);
 
 /* LBE-1420/1425. Returns -1 on an unsupported model.
  *  - set_gnss: constellation enable bitmask (LBE_1425_GNSS_* in lbe_common.h);
- *    rejects masks that combine BeiDou with GPS/SBAS/Galileo.
+ *    on the 1425 (M8), rejects masks that combine BeiDou with GPS/SBAS/Galileo
+ *    (3-concurrent-GNSS limit); on the 1420 (M10), all bits pass through.
  *  - set_dynmodel: u-blox CFG-NAV5 dynamic platform model (0=Portable,
  *    2=Stationary, 8=Airborne<4g, ...).
  *  - set_nmea: enable/disable the NMEA output stream (1425 only). */
