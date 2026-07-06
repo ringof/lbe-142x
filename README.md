@@ -4,10 +4,10 @@ Cross-platform configuration tool for Leo Bodnar GPS-disciplined clock source de
 
 | Model      | PID      | Outputs | Notes                                  |
 |------------|----------|---------|----------------------------------------|
-| LBE-1420   | 0x2443   | 1       | up to 1600 MHz                         |
+| LBE-1420   | 0x2443   | 1       | up to 1600 MHz; GNSS/dyn-model controls, UBX diagnostics (u-blox M10) |
 | LBE-1421   | 0x2444   | 2       | up to 1400 MHz, dual-output, NMEA over CDC |
 | LBE-1423   | 0x226f   | 2       | same protocol as 1421                  |
-| LBE-1425   | 0x2269   | 2       | increased stability; OUT1 <=800 MHz +1PPS, OUT2 <=1.4 GHz; 1421 protocol + GNSS/dyn-model/NMEA controls |
+| LBE-1425   | 0x2269   | 2       | increased stability; OUT1 <=800 MHz +1PPS, OUT2 <=1.4 GHz; 1421 protocol + GNSS/dyn-model/NMEA controls (u-blox M8) |
 | LBE-Mini   | 0x2211   | 1       | up to 810 MHz, UBX stream over HID     |
 
 Configures device settings, sets frequencies, and provides a live GPS monitor.
@@ -27,19 +27,22 @@ Runs on Windows (MSVC / MinGW64) and GNU/Linux (tested on Windows 11 x64 and Ubu
 - Dual output with independent frequency / power / temporary-frequency control
 - 1PPS on OUT1 enable/disable
 - PLL / FLL mode toggle
-- `--monitor` parses NMEA from the USB CDC port (`/dev/ttyACM*` or `COMxx`); auto-discovers the port
 - Live 1PPS chronometer: sub-second UTC interpolated from DCD edges, rolling jitter stats
 
-### LBE-1425 specific
-- Everything in the LBE-1421/1423 set above (dual output, 1PPS, PLL/FLL, NMEA `--monitor`)
-- Asymmetric per-output frequency limits: OUT1 ≤ 800 MHz (the 1PPS output), OUT2 ≤ 1.4 GHz
-- `--gnss <0xNN>` — GNSS constellation enable bitmask (`bit = 1<<gnssId`: GPS=0x01, SBAS=0x02, Galileo=0x04, BeiDou=0x08, IMES=0x10, QZSS=0x20, GLONASS=0x40). BeiDou is mutually exclusive with GPS/SBAS/Galileo; GLONASS is unrestricted. QZSS works even though the vendor UI doesn't expose it.
+### LBE-1420 / LBE-1425 shared
+- `--gnss <0xNN>` — GNSS constellation enable bitmask (`bit = 1<<gnssId`: GPS=0x01, SBAS=0x02, Galileo=0x04, BeiDou=0x08, IMES=0x10, QZSS=0x20, GLONASS=0x40, NavIC=0x80). On the 1425 (M8), BeiDou is mutually exclusive with GPS/SBAS/Galileo (3-concurrent-GNSS limit); on the 1420 (M10) all constellations track simultaneously. QZSS and NavIC work even though the vendor UI doesn't expose them.
 - `--dynmodel <model>` — u-blox dynamic platform model (`portable|stationary|pedestrian|automotive|sea|airborne`, or a raw u-blox value)
-- `--nmea <0|1>` — enable/disable the NMEA output stream
 - `--diag` — live UBX diagnostics: per-SV CNR histogram (NAV-SAT) plus a clock-disciplining line (NAV-CLOCK: bias, drift, time/frequency accuracy), parsed from the EP 0x83 stream
 - `--clocklog [seconds]` — CSV time series of the NAV-CLOCK timing telemetry (bias, drift, time/frequency accuracy) for plotting how the GPS timing solution behaves over time; honesty-gated (see [Timing time series](#timing-time-series-clocklog))
-- `--gps-info` — u-blox module version (UBX-MON-VER), antenna status, and the constellations the receiver actually has enabled (UBX-CFG-GNSS)
-- `--status` additionally reports the **antenna bias current** — so it distinguishes "no antenna" (0 mA) from "OK" from "short", which the single short-circuit bit can't — plus the live GNSS mask, dynamic model and NMEA-output state
+- `--gps-info` — u-blox module version (UBX-MON-VER), antenna status, CFG-TP5 timing-pulse config, and the constellations the receiver actually has enabled (UBX-CFG-GNSS)
+- `--monitor` — parses NMEA from the USB CDC port (`/dev/ttyACM*` or `COMxx`); auto-discovers the port
+- `--status` additionally reports the **antenna bias current** — so it distinguishes "no antenna" (0 mA) from "OK" from "short", which the single short-circuit bit can't — plus the live GNSS mask and dynamic model
+
+### LBE-1425 specific
+- Everything in the LBE-1421/1423 set above (dual output, 1PPS, PLL/FLL)
+- Asymmetric per-output frequency limits: OUT1 ≤ 800 MHz (the 1PPS output), OUT2 ≤ 1.4 GHz
+- `--nmea <0|1>` — enable/disable the NMEA output stream
+- `--status` additionally reports the NMEA-output state
 
 ### LBE-Mini specific
 - `--drive <8|16|24|32>` — set OUT1 Si5351C drive strength in mA (four-level)
@@ -140,18 +143,18 @@ Options:
   --pwr1 <0|1>           Set OUT1 power level: normal(0) or low(1)
   --pwr2 <0|1>           Set OUT2 power level: normal(0) or low(1) (LBE-1421/1423/1425)
   --drive <8|16|24|32>   Set OUT1 drive strength in mA (Mini only)
-  --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40) (LBE-1425 only)
-  --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1425 only)
+  --gnss <0xNN>          Set GNSS constellation bitmask (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLO=0x40 NavIC=0x80) (LBE-1420/1425)
+  --dynmodel <model>     Set u-blox dynamic model (portable|stationary|pedestrian|automotive|sea|airborne) (LBE-1420/1425)
   --nmea <0|1>           Enable or disable NMEA output (LBE-1425 only)
-  --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1425 only)
-  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting (Ctrl-C, or run N s) (LBE-1425 only)
+  --diag                 Live UBX diagnostics (CNR histogram + clock disciplining) (LBE-1420/1425)
+  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting (Ctrl-C, or run N s) (LBE-1420/1425)
   --blink                Blink output LED(s) for 3 seconds
   --status               Display current device status
   --statlog              Poll status ~1 Hz, log lock state + raw report tail (LBE-142x)
   --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced) (LBE-142x)
-  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1421/1423/1425: NMEA via CDC)
+  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars) (Mini: UBX; 1420/1421/1423/1425: NMEA via CDC)
   --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0) (LBE-1421/1423/1425)
-  --gps-info             Print u-blox GPS module version + antenna status (Mini / LBE-1425)
+  --gps-info             Print u-blox GPS module version + antenna status (Mini / LBE-1420 / LBE-1425)
 ```
 
 ### Examples
@@ -193,8 +196,10 @@ Live UBX monitor on LBE-Mini:
 ./lbe-142x --pid 0x2211 --gps-info
 ```
 
-UBX diagnostics (CNR histogram + clock disciplining) and module info on LBE-1425:
+UBX diagnostics (CNR histogram + clock disciplining) and module info on LBE-1420 or LBE-1425:
 ```
+./lbe-142x --pid 0x2443 --diag
+./lbe-142x --pid 0x2443 --gps-info
 ./lbe-142x --pid 0x2269 --diag
 ./lbe-142x --pid 0x2269 --gps-info
 ```
@@ -222,8 +227,8 @@ Device Status (0x7F):
   1PPS on OUT1: Enabled
   Mode: PLL
 ```
-LBE-1425 example (adds the serial number, antenna bias-current readout, and the
-GNSS / dynamic-model / NMEA config it echoes in the status report):
+LBE-1425 example (the 1420 and 1425 add the antenna bias-current readout and
+GNSS / dynamic-model config; the 1425 also shows NMEA-output state):
 ```
   Serial: 0C7BB80E70E5
 Device Status (0x7F):
@@ -241,7 +246,7 @@ Device Status (0x7F):
   Dynamic model: Stationary (2)
   NMEA output: Enabled
 ```
-On the 1425 the antenna line reads `OK (N mA)` / `Not connected (0 mA)` /
+On the 1420 and 1425 the antenna line reads `OK (N mA)` / `Not connected (0 mA)` /
 `Short Circuit`, using the board's antenna bias-current measurement.
 
 LBE-Mini example (no antenna / OUT2 / PLL-mode lines; `--drive` and signal-loss shown instead):
@@ -277,7 +282,7 @@ For metrology-grade PPS timing, an external capture method is required.
 
 ## Timing time series (clocklog)
 
-`--clocklog [seconds]` (LBE-1425) streams a CSV time series of the receiver's
+`--clocklog [seconds]` (LBE-1420/1425) streams a CSV time series of the receiver's
 UBX **NAV-CLOCK** timing telemetry — one row per solution (~1 Hz) — so you can
 plot how the GPS timing solution behaves over time (e.g. `tAcc` settling as a
 fix is acquired). It reads the same EP 0x83 diagnostics stream as `--diag` (no

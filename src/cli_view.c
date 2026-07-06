@@ -102,18 +102,21 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 
 	if (generic || ops->set_gnss) {
 		fprintf(out, "  --gnss <0xNN>          Set GNSS constellation bitmask"
-		        " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
-		        generic ? " (LBE-1425 only)" : "");
+		        " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLO=0x40 NavIC=0x80)%s\n",
+		        generic ? " (LBE-1420/1425)" : "");
 		char dm_tokens[96];
 		fprintf(out, "  --dynmodel <model>     Set u-blox dynamic model (%s)%s\n",
 		        lbe_dynmodel_token_list(dm_tokens, sizeof dm_tokens),
-		        generic ? " (LBE-1425 only)" : "");
+		        generic ? " (LBE-1420/1425)" : "");
+	}
+	if (generic || (ops && ops->set_nmea))
 		fprintf(out, "  --nmea <0|1>           Enable or disable NMEA output%s\n",
 		        generic ? " (LBE-1425 only)" : "");
+	if (generic || (ops && ops->diag)) {
 		fprintf(out, "  --diag                 Live UBX diagnostics (CNR histogram + clock"
-		        " disciplining)%s\n", generic ? " (LBE-1425 only)" : "");
+		        " disciplining)%s\n", generic ? " (LBE-1420/1425)" : "");
 		fprintf(out, "  --clocklog [seconds]   CSV NAV-CLOCK time series for plotting"
-		        " (Ctrl-C, or run N s)%s\n", generic ? " (LBE-1425 only)" : "");
+		        " (Ctrl-C, or run N s)%s\n", generic ? " (LBE-1420/1425)" : "");
 	}
 
 	fprintf(out, "  --blink                Blink output LED(s) for 3 seconds\n");
@@ -123,13 +126,11 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 		fprintf(out, "  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
 		        generic ? " (LBE-142x)" : "");
 
-	if (dual)
-		fprintf(out, "  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)%s\n",
-		        generic ? " (LBE-142x)" : "");
+	fprintf(out, "  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)\n");
 
 	if (generic || ops->monitor)
 		fprintf(out, "  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
-		        generic ? " (Mini: UBX; 1421/1423/1425: NMEA via CDC)" : "");
+		        generic ? " (Mini: UBX; 1420/1421/1423/1425: NMEA via CDC)" : "");
 
 	if (dual)
 		fprintf(out, "  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
@@ -137,7 +138,7 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 
 	if (generic || ops->gps_info)
 		fprintf(out, "  --gps-info             Print u-blox GPS module version + antenna status%s\n",
-		        generic ? " (Mini / LBE-1425)" : "");
+		        generic ? " (Mini / LBE-1420 / LBE-1425)" : "");
 }
 
 void lbe_format_status(FILE *out, int model, const struct lbe_model_ops *ops,
@@ -179,16 +180,16 @@ void lbe_format_status(FILE *out, int model, const struct lbe_model_ops *ops,
 	if (model != LBE_MINI) {
 		fprintf(out, "  Mode: %s\n", s->fll_enabled ? "FLL" : "PLL");
 	}
-	/* The 1425 echoes the GNSS mask (byte 21) and dynamic model (byte 22) in
-	 * its status report -- show the live config. */
+	/* 1420/1425 echo the GNSS mask and dynamic model in their status reports
+	 * (at model-specific byte offsets, normalized into struct fields). */
 	if (ops && ops->set_gnss) {
 		static const struct { uint8_t bit; const char *name; } gn[] = {
 			{LBE_1425_GNSS_GPS, "GPS"}, {LBE_1425_GNSS_SBAS, "SBAS"},
 			{LBE_1425_GNSS_GALILEO, "Galileo"}, {LBE_1425_GNSS_BEIDOU, "BeiDou"},
 			{LBE_1425_GNSS_IMES, "IMES"}, {LBE_1425_GNSS_QZSS, "QZSS"},
-			{LBE_1425_GNSS_GLONASS, "GLONASS"},
+			{LBE_1425_GNSS_GLONASS, "GLONASS"}, {LBE_1425_GNSS_NAVIC, "NavIC"},
 		};
-		uint8_t mask = s->raw[21];
+		uint8_t mask = s->gnss_mask;
 		fprintf(out, "  GNSS: 0x%02X (", mask);
 		int first = 1;
 		for (size_t g = 0; g < sizeof gn / sizeof gn[0]; g++)
@@ -199,11 +200,12 @@ void lbe_format_status(FILE *out, int model, const struct lbe_model_ops *ops,
 		fprintf(out, "%s)\n", first ? "none" : "");
 		const char *dm = "?";
 		for (size_t k = 0; k < sizeof DYNMODEL / sizeof DYNMODEL[0]; k++)
-			if (DYNMODEL[k].value == s->raw[22]) {
+			if (DYNMODEL[k].value == s->dynmodel) {
 				dm = DYNMODEL[k].display;
 				break;
 			}
-		fprintf(out, "  Dynamic model: %s (%u)\n", dm, s->raw[22]);
-		fprintf(out, "  NMEA output: %s\n", s->raw[24] ? "Enabled" : "Disabled");
+		fprintf(out, "  Dynamic model: %s (%u)\n", dm, s->dynmodel);
 	}
+	if (ops && ops->set_nmea)
+		fprintf(out, "  NMEA output: %s\n", s->raw[24] ? "Enabled" : "Disabled");
 }

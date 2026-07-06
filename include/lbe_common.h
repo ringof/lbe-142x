@@ -34,10 +34,12 @@
 #define LBE_1421_SET_PWR1    0x0D
 #define LBE_1421_SET_PWR2    0x0E
 
-/* Compatibility for LBE-1420 */
-#define LBE_1420_SET_F1_TEMP 0x03
-#define LBE_1420_SET_F1      0x04
-#define LBE_1420_SET_PWR1    0x07
+/* LBE-1420 (bcdDevice 1.08) shares the 1421 wire format and most opcodes
+ * (confirmed by vendor capture, Rung 2). Only the GNSS and dynModel opcodes
+ * differ from the 1425 -- everything else (freq, power, pll, enable, blink)
+ * uses the LBE_1421_* / LBE_142X_* defines above. */
+#define LBE_1420_SET_GNSS     0x07  /* GNSS constellation bitmask (arg byte 1) */
+#define LBE_1420_SET_DYNMODEL 0x09  /* u-blox CFG-NAV5 dynamic model (arg byte 1) */
 
 /* LBE-1425-specific opcodes (reverse-engineered from the vendor tool; see
  * docs/reverse/LBE-1425-config-v1.10.md). They reuse the same SET_REPORT
@@ -57,6 +59,7 @@
 #define LBE_1425_GNSS_IMES    0x10  /* mask bit = 1 << u-blox gnssId */
 #define LBE_1425_GNSS_QZSS    0x20  /* confirmed via CFG-GNSS readback */
 #define LBE_1425_GNSS_GLONASS 0x40
+#define LBE_1425_GNSS_NAVIC   0x80  /* u-blox gnssId 7; M10 only */
 
 /* Mini-specific opcodes (differ from 1420/1421 at the same opcode numbers).
  * LBE_MINI_SET_PLL shares its opcode with LBE_1420_SET_F1 but carries a full

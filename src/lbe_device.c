@@ -132,6 +132,10 @@ int lbe_set_pll_mode(struct lbe_device *dev, int fll_mode) {
 }
 
 int lbe_set_1pps(struct lbe_device *dev, int enable) {
+	if (!dev->ops->set_1pps) {
+		fprintf(stderr, "--pps is not supported on this model\n");
+		return -1;
+	}
 	return dev->ops->set_1pps(dev->transport, enable);
 }
 
@@ -152,12 +156,16 @@ int lbe_set_gnss(struct lbe_device *dev, uint8_t mask) {
 		fprintf(stderr, "--gnss is not supported on this model\n");
 		return -1;
 	}
-	/* BeiDou is mutually exclusive with the GPS/SBAS/Galileo group. */
-	uint8_t group = LBE_1425_GNSS_GPS | LBE_1425_GNSS_SBAS | LBE_1425_GNSS_GALILEO;
-	if ((mask & LBE_1425_GNSS_BEIDOU) && (mask & group)) {
-		fprintf(stderr, "Invalid GNSS mask 0x%02X: BeiDou (0x08) cannot be "
-		        "combined with GPS/SBAS/Galileo\n", mask);
-		return -1;
+	/* M8 (1425): BeiDou is mutually exclusive with GPS/SBAS/Galileo
+	 * (3-concurrent-GNSS limit). M10 (1420): no such limit — confirmed
+	 * via --probe-op 0x07 0x4F readback (H8, LBE-1420-RE-plan.md). */
+	if (lbe_get_pid(dev) != PID_LBE_1420) {
+		uint8_t group = LBE_1425_GNSS_GPS | LBE_1425_GNSS_SBAS | LBE_1425_GNSS_GALILEO;
+		if ((mask & LBE_1425_GNSS_BEIDOU) && (mask & group)) {
+			fprintf(stderr, "Invalid GNSS mask 0x%02X: BeiDou (0x08) cannot be "
+			        "combined with GPS/SBAS/Galileo (M8 limit)\n", mask);
+			return -1;
+		}
 	}
 	return dev->ops->set_gnss(dev->transport, mask);
 }

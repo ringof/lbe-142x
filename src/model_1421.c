@@ -58,7 +58,9 @@ static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	s->fll_enabled    = buf[18] != 0;
 	s->out1_power_low = buf[19] != 0;
 	s->out2_power_low = buf[20] != 0;
-	s->antenna_current_ma = buf[23];   /* LBE-1425 antenna bias current (mA) */
+	s->gnss_mask      = buf[21];   /* 1425 GNSS mask; 0x00/0xFF padding on 1421/1423 */
+	s->dynmodel       = buf[22];   /* 1425 dynModel; padding on 1421/1423 */
+	s->antenna_current_ma = buf[23];   /* 1420/1425 antenna bias current (mA) */
 	s->out1_drive_ma  = 0;
 	s->outputs_enabled = (s->raw_status & (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT))
 	                  == (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT);
@@ -124,12 +126,13 @@ static int m1421_set_power_level(struct lbe_transport *t, int output, int low) {
 	return send_cmd(t, opcode, &arg, 1, 1);
 }
 
-/* --- LBE-1425-only commands ---------------------------------------------
+/* --- LBE-1425-specific opcodes ------------------------------------------
  * Same SET_REPORT feature-report transport as the rest of the 1421 family
  * (opcode in payload byte 0, arg in byte 1). Confirmed against a vendor-tool
  * USB capture; see docs/reverse/LBE-1425-config-v1.10.md. Wired into
  * lbe_ops_1425 only, so 1421/1423 never emit these opcodes (which would mean
- * something else on those models). */
+ * something else on those models). The 1420 has equivalent GNSS/dynModel ops
+ * at different opcode numbers in model_1420.c. */
 static int m1425_set_gnss(struct lbe_transport *t, uint8_t mask) {
 	return send_cmd(t, LBE_1425_SET_GNSS, &mask, 1, 1);
 }
@@ -193,7 +196,7 @@ static void pps_stats(const struct pps_tracker *p,
 	*max = mx;
 }
 
-static int m1421_monitor(struct lbe_transport *t) {
+int lbe_shared_monitor(struct lbe_transport *t) {
 	(void)t;
 	char port[64] = {0};
 	if (!lbe_getenv("LBE_PORT", port, sizeof port) &&
@@ -313,7 +316,7 @@ static void m1425_diag_poll(struct lbe_transport *t) {
 	}
 }
 
-static int m1425_diag(struct lbe_transport *t) {
+int lbe_shared_diag(struct lbe_transport *t) {
 	lbe_transport_claim(t);
 
 	struct gnss_pvt    pvt = {0};
@@ -321,6 +324,13 @@ static int m1425_diag(struct lbe_transport *t) {
 	struct ubx_clock   clk = {0};
 	uint8_t buf[1024];
 	size_t  buf_len = 0;
+
+	char model_name[64];
+	char title[96];
+	if (!lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		snprintf(title, sizeof title, "LBE-142x GPS Diagnostics");
+	else
+		snprintf(title, sizeof title, "LBE-%s GPS Diagnostics", model_name);
 
 	lbe_enable_vt();
 	printf("\033[2J\033[H");
@@ -345,7 +355,7 @@ static int m1425_diag(struct lbe_transport *t) {
 			if (payload > (size_t)(got - 2)) payload = (size_t)(got - 2);
 			if (ubx_consume(buf, &buf_len, sizeof buf, r + 2, payload,
 			                &pvt, &sv, &clk) > 0) {
-				gnss_draw("LBE-1425 GPS Diagnostics", &pvt, &sv, -1);
+				gnss_draw(title, &pvt, &sv, -1);
 				if (clk.valid) {
 					/* u-blox reports 0xFFFFFFFF when an accuracy is unknown
 					 * (e.g. before a fix) -- show n/a rather than 4294967295. */
@@ -392,13 +402,17 @@ static void clocklog_print_row(const char *row, void *ctx) {
 	fflush(stdout);   /* line-buffered so live pipes/redirects see each row */
 }
 
-static int m1425_clocklog(struct lbe_transport *t, int seconds) {
+int lbe_shared_clocklog(struct lbe_transport *t, int seconds) {
 	lbe_transport_claim(t);
 
 	struct clocklog_state st;
 	clocklog_init(&st);
 
-	printf("# LBE-1425 NAV-CLOCK time series (u-blox self-report; NOT an\n");
+	char model_name[64];
+	const char *mn = "142x";
+	if (lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		mn = model_name;
+	printf("# LBE-%s NAV-CLOCK time series (u-blox self-report; NOT an\n", mn);
 	printf("# independent measurement of the disciplined OUT1/OUT2 output).\n");
 	printf("# iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap\n");
 	fflush(stdout);
@@ -450,7 +464,7 @@ static const char *gnssid_name(uint8_t g) {
 	switch (g) {
 	case 0: return "GPS"; case 1: return "SBAS"; case 2: return "Galileo";
 	case 3: return "BeiDou"; case 4: return "IMES"; case 5: return "QZSS";
-	case 6: return "GLONASS"; default: return "?";
+	case 6: return "GLONASS"; case 7: return "NavIC"; default: return "?";
 	}
 }
 
@@ -460,24 +474,26 @@ static void m1425_ubx_wrap(struct lbe_transport *t, const uint8_t *w, size_t n) 
 	send_cmd(t, LBE_MINI_UBX_WRAP, w, 1, n);
 }
 
-static int m1425_gps_info(struct lbe_transport *t) {
+int lbe_shared_gps_info(struct lbe_transport *t) {
 	lbe_transport_claim(t);
 	/* MON-VER poll, and enable MON-HW (0A 09) + MON-RF (0A 38) at rate 1 via
 	 * CFG-MSG (06 01, 8-byte payload: msgClass, msgID, rate[6]). */
 	const uint8_t ver_poll[]  = {0x0A, 0x04, 0x00, 0x00};
 	const uint8_t gnss_poll[] = {0x06, 0x3E, 0x00, 0x00};   /* poll CFG-GNSS */
+	const uint8_t tp5_poll[]  = {0x06, 0x31, 0x00, 0x00};   /* poll CFG-TP5 */
 	const uint8_t en_hw[]    = {0x06,0x01,0x08,0x00, 0x0A,0x09,0x01,0,0,0,0,0};
 	const uint8_t en_rf[]    = {0x06,0x01,0x08,0x00, 0x0A,0x38,0x01,0,0,0,0,0};
 	m1425_ubx_wrap(t, ver_poll, sizeof ver_poll);
 	m1425_ubx_wrap(t, gnss_poll, sizeof gnss_poll);
+	m1425_ubx_wrap(t, tp5_poll, sizeof tp5_poll);
 	m1425_ubx_wrap(t, en_hw, sizeof en_hw);
 	m1425_ubx_wrap(t, en_rf, sizeof en_rf);
 
 	printf("u-blox GPS module:\n");
 	uint8_t buf[2048];
 	size_t  buf_len = 0;
-	int got_ver = 0, got_ant = 0, got_gnss = 0;
-	for (int iter = 0; iter < 120 && !(got_ver && got_ant && got_gnss); iter++) {
+	int got_ver = 0, got_ant = 0, got_gnss = 0, got_tp5 = 0;
+	for (int iter = 0; iter < 120 && !(got_ver && got_ant && got_gnss && got_tp5); iter++) {
 		uint8_t r[LBE_1425_DIAG_FRM];
 		int n = lbe_transport_read_input(t, LBE_1425_DIAG_EP, r, sizeof r, 50);
 		if (n < 3 || r[1] == 0) continue;
@@ -508,6 +524,51 @@ static int m1425_gps_info(struct lbe_transport *t) {
 					       ant_status_name(p[4 + 24 * b + 2]),
 					       ant_power_name(p[4 + 24 * b + 3]), b);
 				got_ant = 1;
+			} else if (cls == 0x06 && id == 0x31 && ul >= 32 && !got_tp5) {
+				/* CFG-TP5: timing pulse config (32 bytes).
+				 * Offsets: 0=tpIdx, 1=version, 2=reserved,
+				 * 4=antCableDelay(i16), 6=rfGroupDelay(i16),
+				 * 8=freqPeriod(u32), 12=freqPeriodLock(u32),
+				 * 16=pulseLenRatio(u32), 20=pulseLenRatioLock(u32),
+				 * 24=userConfigDelay(i32), 28=flags(u32). */
+				uint32_t freq = p[8] | (p[9]<<8) | (p[10]<<16) | ((uint32_t)p[11]<<24);
+				uint32_t freqL = p[12] | (p[13]<<8) | (p[14]<<16) | ((uint32_t)p[15]<<24);
+				uint32_t pulse = p[16] | (p[17]<<8) | (p[18]<<16) | ((uint32_t)p[19]<<24);
+				uint32_t pulseL = p[20] | (p[21]<<8) | (p[22]<<16) | ((uint32_t)p[23]<<24);
+				uint32_t flags = p[28] | (p[29]<<8) | (p[30]<<16) | ((uint32_t)p[31]<<24);
+				int16_t cable = (int16_t)(p[4] | (p[5] << 8));
+				int is_freq = (flags >> 3) & 1;   /* bit 3: isFreq */
+				int is_len  = (flags >> 4) & 1;   /* bit 4: isLength */
+				int locked_other = (flags >> 2) & 1; /* bit 2: lockedOtherSet */
+				printf("  TimePulse %u:", p[0]);
+				if (is_freq) {
+					printf(" freq=%u Hz", freq);
+					if (locked_other) printf(" (locked: %u Hz)", freqL);
+				} else {
+					printf(" period=%u us", freq);
+					if (locked_other) printf(" (locked: %u us)", freqL);
+				}
+				if (is_len) {
+					printf("  pulse=%u us", pulse);
+					if (locked_other) printf(" (locked: %u us)", pulseL);
+				} else {
+					printf("  duty=%.1f%%", pulse * 100.0 / 4294967296.0);
+					if (locked_other) printf(" (locked: %.1f%%)",
+					       pulseL * 100.0 / 4294967296.0);
+				}
+				printf("  cableDelay=%d ns", cable);
+				printf("  flags=0x%08X", flags);
+				if (flags & 0x01) printf(" active");
+				if (flags & 0x02) printf(" lockGnssFreq");
+				if (flags & 0x20) printf(" alignToTow");
+				printf(" pol=%s", (flags & 0x40) ? "rising" : "falling");
+				{
+					static const char *grid[] = {"UTC","GPS","GLO","BDS","GAL"};
+					unsigned g = (flags >> 7) & 0x03;
+					printf(" grid=%s", g < 5 ? grid[g] : "?");
+				}
+				printf("\n");
+				got_tp5 = 1;
 			} else if (cls == 0x06 && id == 0x3E && ul >= 4 && !got_gnss) {
 				/* CFG-GNSS: per 8-byte block {gnssId, .., flags(LE32)};
 				 * flags bit 0 = enabled. Lists what the u-blox is really
@@ -537,7 +598,9 @@ static int m1425_gps_info(struct lbe_transport *t) {
 		fprintf(stderr, "  (no MON-HW/RF reply -- antenna status unavailable)\n");
 	if (!got_gnss)
 		fprintf(stderr, "  (no CFG-GNSS reply -- constellation list unavailable)\n");
-	return (got_ver || got_ant || got_gnss) ? 0 : -1;
+	if (!got_tp5)
+		fprintf(stderr, "  (no CFG-TP5 reply -- timing pulse config unavailable)\n");
+	return (got_ver || got_ant || got_gnss || got_tp5) ? 0 : -1;
 }
 
 const struct lbe_model_ops lbe_ops_1421 = {
@@ -553,7 +616,7 @@ const struct lbe_model_ops lbe_ops_1421 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.dual_output        = 1,
 };
 
@@ -573,7 +636,7 @@ const struct lbe_model_ops lbe_ops_1423 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.dual_output        = 1,
 };
 
@@ -593,13 +656,13 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.set_gnss           = m1425_set_gnss,
 	.set_dynmodel       = m1425_set_dynmodel,
 	.set_nmea           = m1425_set_nmea,
-	.diag               = m1425_diag,
-	.clocklog           = m1425_clocklog,
-	.gps_info           = m1425_gps_info,
+	.diag               = lbe_shared_diag,
+	.clocklog           = lbe_shared_clocklog,
+	.gps_info           = lbe_shared_gps_info,
 	.dual_output        = 1,
 	.has_antenna_current = 1,
 };
