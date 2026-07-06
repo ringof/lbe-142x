@@ -287,6 +287,12 @@ int main(int argc, char *argv[]) {
 			printf("Probing opcode 0x%02X", op);
 			for (size_t k = 0; k < pn; k++) printf(" %02X", payload[k]);
 			printf(" ...\n");
+			printf("  before:");
+			for (int b = 0; b < 60; b++) {
+				if (b % 20 == 0 && b) printf("\n        ");
+				printf(" %02X", before.raw[b]);
+			}
+			printf("\n");
 			if (lbe_send_raw(dev, op, payload, pn) != 0) {
 				fprintf(stderr, "  send failed\n");
 				continue;

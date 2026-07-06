@@ -429,25 +429,57 @@ the reset macro — those settings are not touched by factory reset.
 `0x05` (SET_F1_TEMP), `0x0C` (SET_PPS), `0x0E` (SET_PWR2), `0x0F` (SET_NMEA).
 The vendor UI does not expose temporary-freq, 1PPS, or NMEA toggle on the 1420.
 
-### Rung 3 — full status report layout
-| offset | field (assumed)  | value seen | confirmed? |
+### Rung 3 — full status report layout (CONFIRMED 2026-07-05)
+
+Raw dump obtained by adding a full hex print to `--probe-op`. Antenna
+current confirmed by disconnect/reconnect test (byte 12: 0x04 → 0x00 → 0x04).
+
+| offset | field            | value seen | confirmed? |
 |--------|------------------|------------|------------|
-| 0      | report-id echo   |            |            |
-| 1      | status bits      |            |            |
-| 2–5    | (unknown)        |            |            |
-| 6–9    | OUT1 freq LE32   |            |            |
-| 10     | OUT1 power low   |            |            |
-| 11–17  | (unknown)        |            |            |
-| 18     | FLL mode         |            |            |
-| 19–59  | (unknown)        |            |            |
+| 0      | report-id echo   | `0x01`     | yes |
+| 1      | status bits      | `0x1F`     | yes (see bit map below) |
+| 2–5    | padding          | `0x00`     | — |
+| 6–9    | OUT1 freq LE32   | 10 MHz     | yes |
+| **10** | **GNSS mask**    | `0x47`     | **yes** (code assumes power — BUG) |
+| **11** | **dynModel**     | `0x02`     | **yes** (Stationary) |
+| **12** | **antenna mA**   | `0x04`     | **yes** (0 with no antenna, 4 with) |
+| 13–17  | padding          | `0xFF`     | — |
+| 18     | FLL mode         | `0x00`     | yes (PLL) |
+| 19     | unknown          | `0x00`     | — |
+| 20–59  | padding          | `0xFF`     | — |
+
+**Power level is NOT echoed in the status report.** Toggling `0x0D` (SET_PWR1)
+produced no status change in any byte. Power is write-only on the 1420.
+
+**Status bit layout (byte 1)** — differs from the 1421/1425:
+
+| bit | 1420 meaning  | 1421/1425 meaning |
+|-----|---------------|-------------------|
+| 0   | GPS_LOCK      | GPS_LOCK          |
+| 1   | PLL_LOCK      | PLL_LOCK          |
+| 2   | ANT_OK        | ANT_OK            |
+| 3   | LED1          | LED1              |
+| 4   | **OUT_EN**    | LED2              |
+| 5   | unused (0)    | OUT1_EN           |
+| 6   | unused (0)    | OUT2_EN           |
+| 7   | unused (0)    | PPS_EN            |
+
+Confirmed: `0x1F` (enabled) → `0x0F` (disabled via `--out 0`), bit 4 toggles.
+Blink (`0x02`) toggles bit 3 (LED1): `0x1F` → `0x17`.
+
+**Key difference from the 1425:** GNSS/dynModel/antenna-mA live at bytes
+10–12 on the 1420 (vs 21–23 on the 1425). This places them right after the
+frequency field, not in a "tail" region. The 1420 has no freq2, no OUT2 power,
+no NMEA enable, and no PPS in the status report.
 
 ### Rung 4 — code corrections
 > _(to be filled after evidence review)_
 
 ## Open questions
 
-- Does the vendor Windows tool for the 1420 expose any GPS/constellation UI?
-  The 1420 is older — it may predate the GNSS control features.
+- ~~Does the vendor Windows tool for the 1420 expose any GPS/constellation UI?~~
+  **Answered: yes.** The vendor tool sends `0x07` SET_GNSS and `0x09`
+  SET_DYNMODEL. Full constellation sweep and dynmodel sweep captured.
 - What GNSS module does the 1420 use? If it's an older u-blox (M6/M7 vs the
   1425's M8), the protocol capabilities differ. A `--gps-info` equivalent
   (UBX-MON-VER poll) would answer this directly once implemented.
@@ -456,7 +488,13 @@ The vendor UI does not expose temporary-freq, 1PPS, or NMEA toggle on the 1420.
   bcdDevice 1.08?~~ **Answered: one-shot.** The 15-second single-session test
   confirmed one burst of PVT+SAT+CLOCK, then idle. Continuous diagnostics
   require periodic re-polling.
-- Does the 1420 support the same `0x03`/`0x04` GNSS/dynmodel opcodes as the
-  1425, or are those opcodes exclusively freq commands on this model? The Rung 2
-  vendor capture will answer this; DO NOT probe `0x03`/`0x04` blindly as they
-  would be interpreted as SET_F1_TEMP/SET_F1 (frequency change).
+- ~~Does the 1420 support the same `0x03`/`0x04` GNSS/dynmodel opcodes as the
+  1425?~~ **Answered: no.** The 1420 uses different opcodes: `0x07` for GNSS
+  (not `0x03`) and `0x09` for dynModel (not `0x04`). The `0x03`/`0x04` opcodes
+  were never sent by the vendor tool.
+- Does the 1420 firmware accept the "legacy" opcodes `0x03`/`0x04` for freq, or
+  does it ONLY accept `0x06`? The current code uses `0x03`/`0x04` and freq
+  changes have worked — but this may be because `0x03` is now SET_GNSS (and
+  the freq bytes at offset 1–4 happen to be a valid mask), not because the
+  firmware treats them as freq commands. **Do not probe `0x03`/`0x04` further
+  without a hypothesis about what they might do.**

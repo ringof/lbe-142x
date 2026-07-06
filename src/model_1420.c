@@ -30,6 +30,7 @@ static int m1420_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	uint8_t buf[LBE_REPORT_SIZE] = {0};
 	if (lbe_transport_feat_get(t, LBE_STATUS_REPORT_ID, buf) < 0) return -1;
 
+	memcpy(s->raw, buf, LBE_REPORT_SIZE);   /* keep the raw report for inspection */
 	/* buf[0] is the Report ID echo (0x4B); the firmware's real fields
 	 * start at buf[1]. */
 	s->raw_status     = buf[1];
