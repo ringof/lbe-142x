@@ -616,6 +616,24 @@ accessible without firmware changes:
   `{0x08, class, id, len_lo, len_hi, payload...}` at args_offset 1. The
   firmware presumably adds the B5 62 sync header and UBX checksum before
   forwarding to the M10.
+- **Result**: **CONFIRMED.** CFG-TP5 poll (`0x06 0x31 0x00 0x00`) via
+  `--gps-info` returned a full 32-byte CFG-TP5 response from the M10.
+  The 0x08 wrap forwards arbitrary UBX commands, not just CFG-MSG.
+
+  TIMEPULSE0 readback:
+  - Unlocked: 0 Hz, 0% duty (no output)
+  - Locked: **141,697 Hz**, 50% duty square wave
+  - Flags: active, lockGnssFreq, alignToTow, pol=falling, grid=GPS
+  - Cable delay: 0 ns
+
+  141,697 Hz is the GPS-disciplined reference feeding the LBE's PLL.
+  Not a standard frequency — likely chosen by the LBE firmware to minimize
+  fractional-N jitter at common output frequencies.
+
+  CFG-TP5 is not in the M10 interface description (u-blox M10 SPG 5.00,
+  UBX-20053845) — it's a legacy M8-era message. The M10 supports it via
+  backwards compatibility. The documented M10 equivalent is CFG-VALGET/
+  VALSET with CFG-TP-* keys (section 4.9.23 of the interface description).
 
 ### H12: "M10 protocol 34 NAV messages are available"
 
