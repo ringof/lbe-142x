@@ -127,13 +127,11 @@ Key checks:
 Also try a non-destructive probe of the status byte's upper bits:
 
 ```sh
-# Enable outputs, read status, check if bit 5 is set
-lbe-142x --enable
-lbe-142x --status     # note raw_status hex
+# Disable outputs, read status, check if any bit clears
+lbe-142x --out 0 && lbe-142x --status     # note raw_status hex
 
-# Disable outputs, read status, check if bit 5 clears
-lbe-142x --disable
-lbe-142x --status     # note raw_status hex
+# Enable outputs, read status, check if it comes back
+lbe-142x --out 1 && lbe-142x --status     # note raw_status hex
 ```
 
 This directly tests whether the `outputs_enabled = 1` hardcode is hiding a
@@ -232,9 +230,14 @@ Based on Rungs 0–3:
 Each is stated as falsifiable, per the project policy:
 
 ### H1: "The 1420 firmware does not echo `outputs_enabled` in the status byte"
-- **Falsifier**: toggle outputs with `--enable`/`--disable`, read status, check
+- **Falsifier**: toggle outputs with `--out 0`/`--out 1`, read status, check
   bit 5 of `raw_status`. If it changes, the hardcode is wrong.
 - **Test**: Rung 1 (no capture needed).
+- **Result**: REFUTED. Bit 5 (`OUT1_EN_BIT`) stays 0 in both states, but
+  **bit 4 (`LED2_BIT`) toggles**: `0x1F` with outputs on → `0x0F` with outputs
+  off. The 1420 firmware echoes output-enable state on bit 4, not bit 5. The
+  hardcoded `outputs_enabled = 1` in `model_1420.c` is a **bug** — it reports
+  "Output(s) Enabled: Yes" even after `--out 0`.
 
 ### H2: "Opcodes 0x03/0x04 carry freq at payload byte 1, not byte 5"
 - **Falsifier**: vendor tool capture (Rung 2). If the freq LE32 appears at byte
@@ -250,6 +253,11 @@ Each is stated as falsifiable, per the project policy:
 - **Falsifier**: Rung 1's enable/disable test shows bit 5 toggling. Or Rung 2's
   vendor tool capture shows the vendor reading/acting on these bits.
 - **Test**: Rung 1 + Rung 2.
+- **Result**: CONFIRMED for bits 5–7 — they stay 0 in both enabled and disabled
+  states. But the 1420 firmware uses a **different bit layout**: bit 4
+  (`LED2_BIT` in the 1421/1425 mapping) serves as the output-enable indicator.
+  The 1420 status byte is `{GPS, PLL, ANT, LED1, OUT_EN, -, -, -}`, not the
+  1421/1425 layout `{GPS, PLL, ANT, LED1, LED2, OUT1, OUT2, PPS}`.
 
 ### H5: "EN_OUT arg is 0x01 (on) / 0x00 (off) on the 1420"
 - **Falsifier**: vendor tool capture shows a different arg value (e.g. `0x03`
@@ -275,11 +283,23 @@ Each is stated as falsifiable, per the project policy:
 > _Endpoints:_
 > _Kernel nodes:_
 
-### Rung 1 — `--status` + enable/disable probe
-> _`--status` output:_
-> _`raw_status` hex with outputs enabled:_
-> _`raw_status` hex with outputs disabled:_
-> _Interrupt-IN rawdump (if applicable):_
+### Rung 1 — `--status` + enable/disable probe (CONFIRMED 2026-07-05)
+> _Serial:_ `04565E12611B`
+> _`--status` output (baseline):_ GPS Lock Yes, PLL Lock Yes, Antenna OK,
+> OUT1 27 MHz, Power Normal, PLL mode.
+> _`raw_status` hex with outputs enabled:_ **`0x1F`** = `0001 1111`
+> (bits 0–4: GPS, PLL, ANT, LED1, **bit 4 set**)
+> _`raw_status` hex with outputs disabled (`--out 0`):_ **`0x0F`** = `0000 1111`
+> (bits 0–3: GPS, PLL, ANT, LED1; **bit 4 clear**)
+>
+> **Finding:** bit 4 tracks output enable state. The 1420 uses a different
+> status-bit layout from the 1421/1425 — bit 4 is the output-enable flag, not
+> `LED2_BIT`. Bits 5–7 are always 0. The hardcoded `outputs_enabled = 1` in
+> `model_1420.c:48` is a bug: it masks the disabled state.
+> Despite reporting "Output(s) Enabled: Yes" after `--out 0`, the output was
+> actually disabled (confirmed by the frequency output stopping).
+>
+> _Interrupt-IN rawdump:_ not yet tested (awaiting Rung 0 descriptor check).
 
 ### Rung 2 — vendor-tool opcode map
 | Operation      | wValue (report id) | payload bytes (hex)         | matches assumed? |
