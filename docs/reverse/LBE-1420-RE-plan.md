@@ -555,6 +555,11 @@ simultaneously.
   being sent — which would violate the M8 rule but succeed on M10.
 - **Code impact**: If confirmed, the BeiDou-exclusion reject in
   `lbe_device.c:lbe_set_gnss()` needs a model gate (only enforce on 1425/M8).
+- **Result**: **CONFIRMED.** `--probe-op 0x07 0x4F` → byte 10 reads back
+  `0x4F`. `--status` shows `GNSS: 0x4F (GPS SBAS Galileo BeiDou GLONASS)`.
+  GPS lock dropped momentarily during reconfiguration (0x1F→0x1E) then
+  recovered. The M10 runs all five constellations concurrently.
+  BeiDou exclusion gated to 1425-only in `lbe_device.c`.
 
 ### H9: "NavIC/IRNSS is accessible via the GNSS mask"
 
@@ -567,6 +572,9 @@ pattern, NavIC would be bit 7 = `0x80`.
 - **Test**: Set and read back. Safe — if bit 7 is ignored, readback is `0x47`.
 - **Note**: NavIC coverage is regional (India + surrounding). Might not acquire
   any SVs from the test location, but CFG-GNSS readback confirms the config.
+- **Result**: **CONFIRMED.** `--probe-op 0x07 0xCF` → byte 10 reads back
+  `0xCF`. GPS lock recovered. The firmware passes bit 7 through to the M10.
+  NavIC display added to `--status` GNSS table.
 
 ### H10: "IMES (bit 4, 0x10) is passable"
 
@@ -577,6 +585,10 @@ pattern, but never explicitly tested on either model.
 - **Falsifier**: Set `--gnss 0x57` (GPS+SBAS+Galileo+IMES+GLONASS). Readback
   shows `0x57` and CFG-GNSS lists IMES.
 - **Test**: Safe — if unsupported, bit is dropped.
+- **Result**: **CONFIRMED.** `--probe-op 0x07 0x5F` → byte 10 reads back
+  `0x5F`. Also tested `0xFF` (all 8 bits set) → reads back `0xFF`. The
+  firmware passes the entire byte through verbatim; the M10 accepts all
+  constellation bits.
 
 ### H11: "The 0x08 UBX wrap accepts arbitrary UBX commands"
 

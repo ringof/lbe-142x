@@ -59,6 +59,7 @@
 #define LBE_1425_GNSS_IMES    0x10  /* mask bit = 1 << u-blox gnssId */
 #define LBE_1425_GNSS_QZSS    0x20  /* confirmed via CFG-GNSS readback */
 #define LBE_1425_GNSS_GLONASS 0x40
+#define LBE_1425_GNSS_NAVIC   0x80  /* u-blox gnssId 7; M10 only */
 
 /* Mini-specific opcodes (differ from 1420/1421 at the same opcode numbers).
  * LBE_MINI_SET_PLL shares its opcode with LBE_1420_SET_F1 but carries a full

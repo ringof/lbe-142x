@@ -102,7 +102,7 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 
 	if (generic || ops->set_gnss) {
 		fprintf(out, "  --gnss <0xNN>          Set GNSS constellation bitmask"
-		        " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLONASS=0x40)%s\n",
+		        " (GPS=0x01 SBAS=0x02 Gal=0x04 BeiDou=0x08 QZSS=0x20 GLO=0x40 NavIC=0x80)%s\n",
 		        generic ? " (LBE-1420/1425)" : "");
 		char dm_tokens[96];
 		fprintf(out, "  --dynmodel <model>     Set u-blox dynamic model (%s)%s\n",
@@ -187,7 +187,7 @@ void lbe_format_status(FILE *out, int model, const struct lbe_model_ops *ops,
 			{LBE_1425_GNSS_GPS, "GPS"}, {LBE_1425_GNSS_SBAS, "SBAS"},
 			{LBE_1425_GNSS_GALILEO, "Galileo"}, {LBE_1425_GNSS_BEIDOU, "BeiDou"},
 			{LBE_1425_GNSS_IMES, "IMES"}, {LBE_1425_GNSS_QZSS, "QZSS"},
-			{LBE_1425_GNSS_GLONASS, "GLONASS"},
+			{LBE_1425_GNSS_GLONASS, "GLONASS"}, {LBE_1425_GNSS_NAVIC, "NavIC"},
 		};
 		uint8_t mask = s->gnss_mask;
 		fprintf(out, "  GNSS: 0x%02X (", mask);
