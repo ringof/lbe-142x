@@ -334,18 +334,25 @@ Each is stated as falsifiable, per the project policy:
 > **2026-07-06 04:26:22 UTC**. Framing: `[1F][3E][62 bytes payload]` — identical
 > to the 1425.
 >
-> After also enabling NAV-CLOCK (`0x22`), a second dump still showed only one
-> NAV-PVT per 5 seconds. The stream appears **sparser** than the 1425 (which
-> streams PVT+SAT+CLOCK continuously at 1 Hz). Possible explanations:
-> - `0x08` may be a one-shot poll on bcdDevice 1.08 firmware (vs persistent
->   enable on the 1425's 1.10)
-> - The device close/reopen between `--probe-op` and `--rawdump` may reset
->   the stream state
-> - Rate may simply be lower on this firmware version
+> **Single-session test (15 s, all three NAV messages enabled):**
+> All three `0x08` CFG-MSG wraps (PVT `0x07`, CLOCK `0x22`, SAT `0x35`) sent
+> in one session, followed by `--rawdump 0x83 15000`. Result:
 >
-> **Regardless, the diagnostic channel exists and works.** The 1420 can support
-> `--diag`, `--clocklog`, and `--gps-info` using the same UBX infrastructure
-> as the 1425.
+> - Frames 1–3: three `ACK-ACK` (`05 01`, payload `06 01` = CFG-MSG ack) —
+>   firmware accepted all three commands.
+> - Frames 4–8: **one burst** containing NAV-PVT (`01 07`, timestamp
+>   2026-07-06 04:42:46 UTC), NAV-SAT (`01 35`, per-SV records), and
+>   NAV-CLOCK (`01 22`, 20-byte payload with iTOW/bias/drift/accuracy).
+> - Frames 9–42: all idle (`1F 00 FF...`), ~10 seconds of silence.
+>
+> **`0x08` is one-shot on bcdDevice 1.08.** One burst of all three NAV messages,
+> then the stream stops. The 1425 (bcdDevice 1.10) free-runs continuously after
+> activation. For `--diag`/`--clocklog` on the 1420, the implementation will
+> need to re-poll `0x08` at ~1 Hz (the vendor GUI likely does exactly this).
+>
+> The diagnostic channel exists and works. The 1420 can support `--diag`,
+> `--clocklog`, and `--gps-info` using the same UBX infrastructure as the
+> 1425, with the addition of periodic re-polling.
 >
 > _CDC serial (NMEA):_ confirmed streaming on `/dev/ttyACM*`.
 
@@ -386,10 +393,10 @@ Each is stated as falsifiable, per the project policy:
   1425's M8), the protocol capabilities differ. A `--gps-info` equivalent
   (UBX-MON-VER poll) would answer this directly once implemented.
 - Is there a firmware update mechanism? (The 1425 is ROM-based, no updates.)
-- Is the `0x08` CFG-MSG wrap a one-shot poll or a persistent stream-enable on
-  bcdDevice 1.08? The 1425 (1.10) streams continuously after activation; the
-  1420 showed only one NAV-PVT in 5 seconds. A longer dump or a combined
-  probe+dump in a single session would clarify.
+- ~~Is the `0x08` CFG-MSG wrap a one-shot poll or a persistent stream-enable on
+  bcdDevice 1.08?~~ **Answered: one-shot.** The 15-second single-session test
+  confirmed one burst of PVT+SAT+CLOCK, then idle. Continuous diagnostics
+  require periodic re-polling.
 - Does the 1420 support the same `0x03`/`0x04` GNSS/dynmodel opcodes as the
   1425, or are those opcodes exclusively freq commands on this model? The Rung 2
   vendor capture will answer this; DO NOT probe `0x03`/`0x04` blindly as they
