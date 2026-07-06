@@ -451,15 +451,7 @@ static int mini_gps_info(struct lbe_transport *t) {
 		while (ubx_next(buf, buf_len, &off, &cls, &id, &p, &ulen, NULL)) {
 			if (cls == 0x0A && id == 0x04 && ulen >= 40) {
 				printf("u-blox GPS module:\n");
-				printf("  SW version : %.30s\n", (const char *)p);
-				printf("  HW version : %.10s\n", (const char *)(p + 30));
-				size_t ext_off = 40;
-				int n = 0;
-				while (ext_off + 30 <= ulen) {
-					printf("  Extension %d: %.30s\n", ++n,
-					       (const char *)(p + ext_off));
-					ext_off += 30;
-				}
+				ubx_print_mon_ver(stdout, p, ulen);
 				return 0;
 			}
 		}

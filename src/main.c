@@ -343,8 +343,15 @@ int main(int argc, char *argv[]) {
 			/* --clocklog [seconds]: CSV NAV-CLOCK time series. Optional
 			 * positive duration; default runs until Ctrl-C. */
 			int seconds = 0;
-			if (i + 1 < argc && argv[i+1][0] >= '0' && argv[i+1][0] <= '9')
-				seconds = atoi(argv[++i]);
+			if (i + 1 < argc && argv[i+1][0] >= '0' && argv[i+1][0] <= '9') {
+				char *end;
+				unsigned long v = strtoul(argv[++i], &end, 10);
+				if (*end != '\0' || v > INT32_MAX) {
+					fprintf(stderr, "Invalid --clocklog duration: %s\n", argv[i]);
+					continue;
+				}
+				seconds = (int)v;
+			}
 			lbe_clocklog(dev, seconds);
 			changed = 1;
 		} else if (strcmp(argv[i], "--rawdump") == 0) {
@@ -354,7 +361,15 @@ int main(int argc, char *argv[]) {
 			int ms = 2000;
 			if (i + 1 < argc && argv[i+1][0] == '0') {
 				ep = (uint8_t)strtoul(argv[++i], NULL, 0);
-				if (i + 1 < argc) ms = atoi(argv[++i]);
+				if (i + 1 < argc) {
+					char *end;
+					unsigned long v = strtoul(argv[++i], &end, 10);
+					if (*end != '\0' || v > INT32_MAX) {
+						fprintf(stderr, "Invalid --rawdump duration: %s\n", argv[i]);
+						continue;
+					}
+					ms = (int)v;
+				}
 			}
 			lbe_rawdump(dev, ep, ms);
 			changed = 1;

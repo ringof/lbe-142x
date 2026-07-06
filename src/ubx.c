@@ -5,6 +5,14 @@
 #include <stdio.h>
 #include <string.h>
 
+void ubx_print_mon_ver(FILE *out, const uint8_t *p, uint16_t plen) {
+	if (plen < 40) return;
+	fprintf(out, "  SW version : %.30s\n", (const char *)p);
+	fprintf(out, "  HW version : %.10s\n", (const char *)(p + 30));
+	for (size_t eo = 40, e = 0; eo + 30 <= plen; eo += 30)
+		fprintf(out, "  Extension %zu: %.30s\n", ++e, (const char *)(p + eo));
+}
+
 int ubx_checksum_ok(const uint8_t *msg, size_t total) {
 	if (total < 8) return 0;
 	uint8_t ca = 0, cb = 0;

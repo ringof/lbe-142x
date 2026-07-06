@@ -159,7 +159,7 @@ int lbe_set_gnss(struct lbe_device *dev, uint8_t mask) {
 	/* M8 (1425): BeiDou is mutually exclusive with GPS/SBAS/Galileo
 	 * (3-concurrent-GNSS limit). M10 (1420): no such limit — confirmed
 	 * via --probe-op 0x07 0x4F readback (H8, LBE-1420-RE-plan.md). */
-	if (lbe_get_pid(dev) != PID_LBE_1420) {
+	if (dev->ops->gnss_beidou_exclusive) {
 		uint8_t group = LBE_1425_GNSS_GPS | LBE_1425_GNSS_SBAS | LBE_1425_GNSS_GALILEO;
 		if ((mask & LBE_1425_GNSS_BEIDOU) && (mask & group)) {
 			fprintf(stderr, "Invalid GNSS mask 0x%02X: BeiDou (0x08) cannot be "

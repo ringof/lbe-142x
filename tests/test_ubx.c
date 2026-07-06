@@ -5,6 +5,7 @@
 #include "gnss_view.h"
 #include "test_util.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static void put_u16(uint8_t *p, uint16_t v) {
@@ -295,6 +296,66 @@ void run_ubx_tests(void) {
 		cfn = ubx_frame(cf, 0x01, 0x22, cpl, 20);
 		ubx_consume(buf, &buf_len, sizeof buf, cf, cfn, &pvt, &sv, &clk);
 		CHECK(clk.valid == 1 && clk.tacc_ns == 7u);
+	}
+
+	/* ubx_print_mon_ver: 70-byte payload (30 SW + 10 HW + 30 ext) */
+	{
+#if defined(_MSC_VER)
+		FILE *f = NULL;
+		if (tmpfile_s(&f) != 0) f = NULL;
+#else
+		FILE *f = tmpfile();
+#endif
+		CHECK(f != NULL);
+		if (f) {
+			/* 70 bytes: 30 SW + 10 HW + 30 extension */
+			uint8_t ver[70];
+			memset(ver, 0, sizeof ver);
+			memcpy(ver, "ROM CORE 3.01 (107888)", 22);
+			memcpy(ver + 30, "00080000", 8);
+			memcpy(ver + 40, "FWVER=SPG 3.01", 14);
+			ubx_print_mon_ver(f, ver, 70);
+			long n = ftell(f);
+			char out[512];
+			if (n < 0) n = 0;
+			if ((size_t)n >= sizeof out) n = (long)sizeof out - 1;
+			rewind(f);
+			size_t got = fread(out, 1, (size_t)n, f);
+			out[got] = '\0';
+			fclose(f);
+			CHECK(strstr(out, "ROM CORE 3.01") != NULL);
+			CHECK(strstr(out, "00080000") != NULL);
+			CHECK(strstr(out, "FWVER=SPG 3.01") != NULL);
+			CHECK(strstr(out, "Extension 1") != NULL);
+		}
+	}
+	/* ubx_print_mon_ver: 40-byte edge case (no extensions) */
+	{
+#if defined(_MSC_VER)
+		FILE *f = NULL;
+		if (tmpfile_s(&f) != 0) f = NULL;
+#else
+		FILE *f = tmpfile();
+#endif
+		CHECK(f != NULL);
+		if (f) {
+			uint8_t ver[40];
+			memset(ver, 0, sizeof ver);
+			memcpy(ver, "EXT CORE 1.00", 13);
+			memcpy(ver + 30, "00190000", 8);
+			ubx_print_mon_ver(f, ver, 40);
+			long n = ftell(f);
+			char out[512];
+			if (n < 0) n = 0;
+			if ((size_t)n >= sizeof out) n = (long)sizeof out - 1;
+			rewind(f);
+			size_t got = fread(out, 1, (size_t)n, f);
+			out[got] = '\0';
+			fclose(f);
+			CHECK(strstr(out, "EXT CORE 1.00") != NULL);
+			CHECK(strstr(out, "00190000") != NULL);
+			CHECK(strstr(out, "Extension") == NULL);   /* no extensions */
+		}
 	}
 
 	/* ubx_next: extract messages, skip 0xFF/0x00 padding, leave a partial tail */

@@ -5,6 +5,7 @@
 #include "lbe_model.h"
 #include "lbe_transport.h"
 #include "lbe_platform.h"
+#include "lbe_status_read.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -39,15 +40,8 @@ static int send_cmd(struct lbe_transport *t, uint8_t opcode,
 static int m1420_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	uint8_t buf[LBE_REPORT_SIZE] = {0};
 
-	/* Retry-on-zero-freq: same transient-zero guard as model_1421.c. */
-	for (int attempt = 0; attempt < 2; attempt++) {
-		memset(buf, 0, sizeof buf);
-		if (lbe_transport_feat_get(t, LBE_STATUS_REPORT_ID, buf) < 0) return -1;
-		uint32_t f1 = buf[6] | (buf[7] << 8) | (buf[8] << 16) | (buf[9] << 24);
-		if (f1 != 0) break;
-		if (attempt == 0) lbe_sleep_ms(20);
-		else return -1;
-	}
+	if (lbe_read_status_retrying(t, LBE_STATUS_REPORT_ID, 6, buf, sizeof buf) < 0)
+		return -1;
 
 	memcpy(s->raw, buf, LBE_REPORT_SIZE);
 	s->raw_status     = buf[1];

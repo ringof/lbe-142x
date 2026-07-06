@@ -132,9 +132,9 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 		fprintf(out, "  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",
 		        generic ? " (Mini: UBX; 1420/1421/1423/1425: NMEA via CDC)" : "");
 
-	if (dual)
+	if (generic || (ops->monitor && !is_mini))
 		fprintf(out, "  --port <name>          CDC port for --monitor (e.g. COM12 or /dev/ttyACM0)%s\n",
-		        generic ? " (LBE-1421/1423/1425)" : "");
+		        generic ? " (LBE-1420/1421/1423/1425)" : "");
 
 	if (generic || ops->gps_info)
 		fprintf(out, "  --gps-info             Print u-blox GPS module version + antenna status%s\n",

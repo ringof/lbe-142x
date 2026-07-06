@@ -243,6 +243,7 @@ if(LBE_BUILD_TESTS)
         tests/test_nmea.c
         tests/test_replay.c
         tests/test_cli.c
+        tests/test_device.c
         src/ubx.c
         src/nmea.c
         src/cli_view.c)

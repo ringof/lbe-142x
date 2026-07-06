@@ -6,6 +6,7 @@
 #include "lbe_transport.h"
 #include "lbe_serial.h"
 #include "lbe_platform.h"
+#include "lbe_status_read.h"
 #include "nmea.h"
 #include "gnss_view.h"
 #include "ubx.h"
@@ -37,19 +38,8 @@ static int send_cmd(struct lbe_transport *t, uint8_t opcode,
 static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	uint8_t buf[LBE_REPORT_SIZE] = {0};
 
-	/* A valid status always carries a non-zero OUT1 frequency (min 1 Hz,
-	 * realistically MHz). An all-zero report is a transient garbage read --
-	 * seen e.g. when an antenna unplug briefly shorts and stuns the MCU,
-	 * which would otherwise show as a bogus "Short Circuit / 0 Hz". Retry
-	 * once before giving up rather than reporting the false state. */
-	for (int attempt = 0; attempt < 2; attempt++) {
-		memset(buf, 0, sizeof buf);
-		if (lbe_transport_feat_get(t, LBE_STATUS_REPORT_ID, buf) < 0) return -1;
-		uint32_t f1 = buf[6] | (buf[7] << 8) | (buf[8] << 16) | (buf[9] << 24);
-		if (f1 != 0) break;
-		if (attempt == 0) lbe_sleep_ms(20);
-		else return -1;   /* persistently implausible -- treat as failed read */
-	}
+	if (lbe_read_status_retrying(t, LBE_STATUS_REPORT_ID, 6, buf, sizeof buf) < 0)
+		return -1;
 
 	memcpy(s->raw, buf, LBE_REPORT_SIZE);   /* keep the raw report for inspection */
 	s->raw_status     = buf[1];
@@ -509,10 +499,7 @@ int lbe_shared_gps_info(struct lbe_transport *t) {
 		uint16_t ul;
 		while (ubx_next(buf, buf_len, &off, &cls, &id, &p, &ul, NULL)) {
 			if (cls == 0x0A && id == 0x04 && ul >= 40 && !got_ver) {
-				printf("  SW version : %.30s\n", (const char *)p);
-				printf("  HW version : %.10s\n", (const char *)(p + 30));
-				for (size_t eo = 40, e = 0; eo + 30 <= ul; eo += 30)
-					printf("  Extension %zu: %.30s\n", ++e, (const char *)(p + eo));
+				ubx_print_mon_ver(stdout, p, ul);
 				got_ver = 1;
 			} else if (cls == 0x0A && id == 0x09 && ul >= 22 && !got_ant) {
 				printf("  Antenna    : %s (power %s)  [MON-HW]\n",
@@ -665,4 +652,5 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.gps_info           = lbe_shared_gps_info,
 	.dual_output        = 1,
 	.has_antenna_current = 1,
+	.gnss_beidou_exclusive = 1,
 };
