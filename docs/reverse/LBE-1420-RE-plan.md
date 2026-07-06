@@ -243,6 +243,9 @@ Each is stated as falsifiable, per the project policy:
 - **Falsifier**: vendor tool capture (Rung 2). If the freq LE32 appears at byte
   5 instead, the 1420 shares the 1421 payload layout.
 - **Test**: Rung 2.
+- **Result**: REFUTED. The vendor tool uses opcode `0x06` with freq at byte 5 —
+  the 1421 wire format. Opcodes 0x03/0x04 were never sent. The "legacy" 1420
+  opcodes in `lbe_common.h` may be from an older firmware or simply wrong.
 
 ### H3: "The 1420 is HID-only with no interrupt-IN endpoint"
 - **Falsifier**: `lsusb -v` shows an interrupt-IN endpoint, or `--rawdump`
@@ -267,11 +270,18 @@ Each is stated as falsifiable, per the project policy:
 - **Falsifier**: vendor tool capture shows a different arg value (e.g. `0x03`
   like the 1421/1425).
 - **Test**: Rung 2.
+- **Result**: PARTIALLY REFUTED. Off = `0x00` (correct), but on = `0xFF`
+  (not `0x01`). The current code sends `0x01` and it works, so likely any
+  nonzero value = on. Minor — but for vendor-parity, should send `0xFF`.
 
 ### H6: "The 1420 has no GNSS-related firmware features"
 - **Falsifier**: status report bytes 21–24 contain non-padding data, or the
   vendor UI exposes constellation/dynmodel controls.
 - **Test**: Rung 2 + Rung 3.
+- **Result**: REFUTED. The vendor tool sends `0x07` SET_GNSS (constellation
+  mask) and `0x09` SET_DYNMODEL (u-blox dynamic platform model). Full
+  constellation sweep captured (GPS, SBAS, Galileo, BeiDou, GLONASS). Factory
+  reset sets GNSS=0x47, dynModel=Stationary — same as the 1425.
 
 ### H7: "1.6 GHz max is a hard firmware limit"
 - **Falsifier**: setting a frequency above 1.6 GHz via `--f1t` succeeds and
@@ -356,19 +366,68 @@ Each is stated as falsifiable, per the project policy:
 >
 > _CDC serial (NMEA):_ confirmed streaming on `/dev/ttyACM*`.
 
-### Rung 2 — vendor-tool opcode map
-| Operation      | wValue (report id) | payload bytes (hex)         | matches assumed? |
-|----------------|--------------------|-----------------------------|------------------|
-| connect/status |                    |                             |                  |
-| set freq 10MHz |                    |                             |                  |
-| set freq 25MHz |                    |                             |                  |
-| outputs off    |                    |                             |                  |
-| outputs on     |                    |                             |                  |
-| power low      |                    |                             |                  |
-| power normal   |                    |                             |                  |
-| PLL→FLL        |                    |                             |                  |
-| FLL→PLL        |                    |                             |                  |
-| blink          |                    |                             |                  |
+### Rung 2 — vendor-tool opcode map (CONFIRMED 2026-07-05, usbmon_live.py)
+
+Captured via `usbmon_live.py --dev 13 --reads` on bus 3, device redirected
+to GNOME Boxes VM running the vendor Windows tool.
+
+**The LBE-1420 (bcdDevice 1.08) uses the 1421 wire format, NOT the assumed
+"legacy" format.** The `LBE_1420_SET_F1_TEMP`/`SET_F1`/`SET_PWR1` opcodes
+in `lbe_common.h` (0x03/0x04/0x07) are all wrong for this firmware.
+
+| Operation | opcode | payload (hex) | code assumed | match? |
+|-----------|--------|---------------|--------------|--------|
+| set freq 10MHz | `0x06` | `06 00 00 00 00 80 96 98 00` (freq@byte5) | 0x04 freq@byte1 | **NO** |
+| set freq 25MHz | `0x06` | `06 00 00 00 00 40 78 7D 01` (freq@byte5) | 0x04 freq@byte1 | **NO** |
+| outputs off | `0x01` | `01 00` | 0x01 arg=0x00 | yes |
+| outputs on | `0x01` | `01 FF` | 0x01 arg=0x01 | **minor** (0xFF vs 0x01; nonzero=on) |
+| power low | `0x0D` | `0D 01` | 0x07 arg=0x01 | **NO** (0x07 is GNSS!) |
+| power normal | `0x0D` | `0D 00` | 0x07 arg=0x00 | **NO** |
+| PLL→FLL | `0x0B` | `0B 01` | 0x0B arg=0x01 | yes |
+| FLL→PLL | `0x0B` | `0B 00` | 0x0B arg=0x00 | yes |
+| blink | `0x02` | `02 00` | 0x02 | yes |
+| GNSS mask (new!) | `0x07` | `07 <mask>` (see below) | not implemented | — |
+| dynmodel (new!) | `0x09` | `09 <val>` (see below) | not implemented | — |
+| UBX poll | `0x08` | `08 06 01 08 00 01 <sel> 01` | not implemented | — |
+
+**Opcode 0x07 = SET_GNSS (constellation bitmask)**. Same bitmask encoding as
+the 1425's `0x03` — `bit = 1 << u-blox gnssId`:
+
+| capture | arg | constellations |
+|---------|-----|----------------|
+| sweep | `0x01` | GPS |
+| sweep | `0x03` | GPS+SBAS |
+| sweep | `0x07` | GPS+SBAS+Galileo |
+| sweep | `0x0F` | GPS+SBAS+Galileo+BeiDou |
+| sweep | `0x47` | GPS+SBAS+Galileo+GLONASS |
+
+**Critical bug:** `model_1420.c` defines `LBE_1420_SET_PWR1 = 0x07`. Using
+`--pwr1 1` on the 1420 sends `0x07 0x01`, which the firmware interprets as
+SET_GNSS with mask=0x01 (GPS-only). `--pwr1 0` sends `0x07 0x00`, which
+would **disable all GNSS constellations**.
+
+**Opcode 0x09 = SET_DYNMODEL (u-blox CFG-NAV5)**. Same value encoding as the
+1425's `0x04`:
+
+| capture | arg | model |
+|---------|-----|-------|
+| sweep | `0x00` | Portable |
+| sweep | `0x08` | Airborne<4g |
+| sweep | `0x02` | Stationary |
+
+**Factory reset sequence** (vendor "reset to factory" button):
+1. `0x06` SET_F1 = 10 MHz
+2. `0x0B` SET_PLL = 0 (PLL mode)
+3. `0x0D` SET_PWR1 = 0 (normal)
+4. `0x07` SET_GNSS = `0x47` (GPS+SBAS+Galileo+GLONASS)
+5. `0x09` SET_DYNMODEL = `0x02` (Stationary)
+
+Factory defaults match the 1425 exactly. No EN_OUT, SET_PPS, or SET_NMEA in
+the reset macro — those settings are not touched by factory reset.
+
+**Opcodes NOT seen:** `0x03`/`0x04` (the assumed "legacy" 1420 freq opcodes),
+`0x05` (SET_F1_TEMP), `0x0C` (SET_PPS), `0x0E` (SET_PWR2), `0x0F` (SET_NMEA).
+The vendor UI does not expose temporary-freq, 1PPS, or NMEA toggle on the 1420.
 
 ### Rung 3 — full status report layout
 | offset | field (assumed)  | value seen | confirmed? |
