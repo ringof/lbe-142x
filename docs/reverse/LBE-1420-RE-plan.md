@@ -648,3 +648,7 @@ These could be enabled via CFG-MSG wrap (same mechanism as PVT/SAT/CLOCK).
 - **Test**: Safe — worst case, the M10 NAK's the unknown message.
 - **Value**: NAV-SIG gives per-signal (L1C/A, L1C, etc.) CNR rather than the
   per-SV aggregate NAV-SAT provides. Better visibility into multipath/jamming.
+- **Result**: **CONFIRMED.** CFG-MSG enable for NAV-SIG via `--probe-op`,
+  followed by `--rawdump 0x83 3000`, produced `B5 62 01 43 48 02` — a 584-byte
+  NAV-SIG response with `numSigs = 36` individual signal records. The M10
+  forwards protocol-34 NAV messages through the 0x08 wrap.
