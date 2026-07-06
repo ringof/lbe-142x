@@ -123,9 +123,7 @@ void lbe_print_usage(FILE *out, int model, const struct lbe_model_ops *ops) {
 		fprintf(out, "  --statlog              Poll status ~1 Hz, log lock state + raw report tail%s\n",
 		        generic ? " (LBE-142x)" : "");
 
-	if (dual)
-		fprintf(out, "  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)%s\n",
-		        generic ? " (LBE-142x)" : "");
+	fprintf(out, "  --probe-op <0xNN> [b..] Send a raw opcode + bytes, show status changes (advanced)\n");
 
 	if (generic || ops->monitor)
 		fprintf(out, "  --monitor              Live GPS display (UTC, lat/lon, altitude, CNR bars)%s\n",

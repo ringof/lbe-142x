@@ -265,10 +265,6 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(argv[i], "--probe-op") == 0) {
 			/* RE helper: send an arbitrary opcode (+ optional payload bytes)
 			 * and report which status-report bytes it changed. */
-			if (!lbe_device_ops(dev)->dual_output) {
-				fprintf(stderr, "--probe-op needs the 1421-family status report\n");
-				continue;
-			}
 			if (i + 1 >= argc) {
 				fprintf(stderr, "usage: --probe-op <0xNN> [b1 b2 ...]\n");
 				continue;

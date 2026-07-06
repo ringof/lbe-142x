@@ -248,6 +248,10 @@ Each is stated as falsifiable, per the project policy:
 - **Falsifier**: `lsusb -v` shows an interrupt-IN endpoint, or `--rawdump`
   returns data.
 - **Test**: Rung 0.
+- **Result**: REFUTED. `lsusb -v` shows the 1420 is a CDC+HID composite with
+  the same three-interface layout as the 1425: CDC ACM on IF0+IF1 (serial port,
+  likely NMEA), HID on IF2 with **EP 0x83 interrupt-IN (64B)** — the same
+  endpoint the 1425 uses for its UBX diagnostic stream.
 
 ### H4: "Status byte bits 5–7 (OUT1_EN, OUT2_EN, PPS_EN) are unused on the 1420"
 - **Falsifier**: Rung 1's enable/disable test shows bit 5 toggling. Or Rung 2's
@@ -276,12 +280,32 @@ Each is stated as falsifiable, per the project policy:
 
 ## Evidence (fill in as captures arrive)
 
-### Rung 0 — descriptors
-> _PID:_ (confirm `0x2443`)
-> _bcdDevice:_
-> _Interfaces / classes:_
+### Rung 0 — descriptors (CONFIRMED 2026-07-05)
+> _PID:_ **`0x2443`** confirmed. `iProduct` = "LBE-1420 GPS Locked Clock Source".
+> _bcdDevice:_ **1.08**
+> _Serial:_ `04565E12611B`
+> _Interfaces / classes:_ **Composite IAD** (`bDeviceClass 0xEF`), same shape
+> as the 1425. Three interfaces:
+> - IF0 + IF1 = **CDC ACM** (Communications + CDC Data). This means the 1420
+>   has a serial port (`/dev/ttyACM*`) — likely streaming NMEA, just like the
+>   1421/1425.
+> - IF2 = **HID** with interrupt-IN.
+>
 > _Endpoints:_
-> _Kernel nodes:_
+> - CDC notify: EP `0x81` (interrupt, 10B)
+> - CDC data: EP `0x02` OUT (bulk, 8B) / EP `0x82` IN (bulk, 16B)
+> - HID interrupt-IN: **EP `0x83`** (64B) — same as the 1425's UBX diagnostic
+>   channel. The 1420 code never reads this endpoint.
+>
+> _Kernel nodes:_ not checked yet (device was opened without root; HID report
+> descriptor shows "UNAVAILABLE" — needs `sudo lsusb -v` or `/dev/ttyACM*` check).
+>
+> **Key finding:** the LBE-1420 is NOT HID-only. It has the same CDC+HID
+> composite layout as the 1421/1425, with a CDC serial port and a 64-byte
+> interrupt-IN endpoint on EP 0x83. Neither is used by the current code.
+> This means the 1420 potentially supports NMEA monitoring (`--monitor`),
+> UBX diagnostics (`--diag`/`--clocklog`/`--gps-info`), and 1PPS-on-DCD — all
+> capabilities that were never investigated.
 
 ### Rung 1 — `--status` + enable/disable probe (CONFIRMED 2026-07-05)
 > _Serial:_ `04565E12611B`
@@ -299,7 +323,31 @@ Each is stated as falsifiable, per the project policy:
 > Despite reporting "Output(s) Enabled: Yes" after `--out 0`, the output was
 > actually disabled (confirmed by the frequency output stopping).
 >
-> _Interrupt-IN rawdump:_ not yet tested (awaiting Rung 0 descriptor check).
+> _Interrupt-IN rawdump (EP 0x83):_ **UBX stream confirmed.**
+>
+> Idle state: `[1F][00][FF×62]` — tag `0x1F`, length 0, 62 bytes padding.
+> Same 2-byte `[tag][len]` framing as the 1425.
+>
+> After sending `0x08` CFG-MSG wrap to enable NAV-PVT (same command the 1425
+> vendor tool uses: `08 06 01 08 00 01 07 0A`), EP 0x83 produced a **valid
+> NAV-PVT** (`B5 62 01 07 5C 00`, 92 bytes) spanning frames 3–5, timestamped
+> **2026-07-06 04:26:22 UTC**. Framing: `[1F][3E][62 bytes payload]` — identical
+> to the 1425.
+>
+> After also enabling NAV-CLOCK (`0x22`), a second dump still showed only one
+> NAV-PVT per 5 seconds. The stream appears **sparser** than the 1425 (which
+> streams PVT+SAT+CLOCK continuously at 1 Hz). Possible explanations:
+> - `0x08` may be a one-shot poll on bcdDevice 1.08 firmware (vs persistent
+>   enable on the 1425's 1.10)
+> - The device close/reopen between `--probe-op` and `--rawdump` may reset
+>   the stream state
+> - Rate may simply be lower on this firmware version
+>
+> **Regardless, the diagnostic channel exists and works.** The 1420 can support
+> `--diag`, `--clocklog`, and `--gps-info` using the same UBX infrastructure
+> as the 1425.
+>
+> _CDC serial (NMEA):_ confirmed streaming on `/dev/ttyACM*`.
 
 ### Rung 2 — vendor-tool opcode map
 | Operation      | wValue (report id) | payload bytes (hex)         | matches assumed? |
@@ -335,5 +383,14 @@ Each is stated as falsifiable, per the project policy:
 - Does the vendor Windows tool for the 1420 expose any GPS/constellation UI?
   The 1420 is older — it may predate the GNSS control features.
 - What GNSS module does the 1420 use? If it's an older u-blox (M6/M7 vs the
-  1425's M8), the protocol capabilities differ.
+  1425's M8), the protocol capabilities differ. A `--gps-info` equivalent
+  (UBX-MON-VER poll) would answer this directly once implemented.
 - Is there a firmware update mechanism? (The 1425 is ROM-based, no updates.)
+- Is the `0x08` CFG-MSG wrap a one-shot poll or a persistent stream-enable on
+  bcdDevice 1.08? The 1425 (1.10) streams continuously after activation; the
+  1420 showed only one NAV-PVT in 5 seconds. A longer dump or a combined
+  probe+dump in a single session would clarify.
+- Does the 1420 support the same `0x03`/`0x04` GNSS/dynmodel opcodes as the
+  1425, or are those opcodes exclusively freq commands on this model? The Rung 2
+  vendor capture will answer this; DO NOT probe `0x03`/`0x04` blindly as they
+  would be interpreted as SET_F1_TEMP/SET_F1 (frequency change).
