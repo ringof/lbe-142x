@@ -464,7 +464,7 @@ static const char *gnssid_name(uint8_t g) {
 	switch (g) {
 	case 0: return "GPS"; case 1: return "SBAS"; case 2: return "Galileo";
 	case 3: return "BeiDou"; case 4: return "IMES"; case 5: return "QZSS";
-	case 6: return "GLONASS"; default: return "?";
+	case 6: return "GLONASS"; case 7: return "NavIC"; default: return "?";
 	}
 }
 
