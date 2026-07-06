@@ -58,7 +58,9 @@ static int m1421_get_status(struct lbe_transport *t, struct lbe_status *s) {
 	s->fll_enabled    = buf[18] != 0;
 	s->out1_power_low = buf[19] != 0;
 	s->out2_power_low = buf[20] != 0;
-	s->antenna_current_ma = buf[23];   /* LBE-1425 antenna bias current (mA) */
+	s->gnss_mask      = buf[21];   /* 1425 GNSS mask; 0x00/0xFF padding on 1421/1423 */
+	s->dynmodel       = buf[22];   /* 1425 dynModel; padding on 1421/1423 */
+	s->antenna_current_ma = buf[23];   /* 1420/1425 antenna bias current (mA) */
 	s->out1_drive_ma  = 0;
 	s->outputs_enabled = (s->raw_status & (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT))
 	                  == (LBE_OUT1_EN_BIT | LBE_OUT2_EN_BIT);
@@ -193,7 +195,7 @@ static void pps_stats(const struct pps_tracker *p,
 	*max = mx;
 }
 
-static int m1421_monitor(struct lbe_transport *t) {
+int lbe_shared_monitor(struct lbe_transport *t) {
 	(void)t;
 	char port[64] = {0};
 	if (!lbe_getenv("LBE_PORT", port, sizeof port) &&
@@ -313,7 +315,7 @@ static void m1425_diag_poll(struct lbe_transport *t) {
 	}
 }
 
-static int m1425_diag(struct lbe_transport *t) {
+int lbe_shared_diag(struct lbe_transport *t) {
 	lbe_transport_claim(t);
 
 	struct gnss_pvt    pvt = {0};
@@ -321,6 +323,13 @@ static int m1425_diag(struct lbe_transport *t) {
 	struct ubx_clock   clk = {0};
 	uint8_t buf[1024];
 	size_t  buf_len = 0;
+
+	char model_name[64];
+	char title[96];
+	if (!lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		snprintf(title, sizeof title, "LBE-142x GPS Diagnostics");
+	else
+		snprintf(title, sizeof title, "LBE-%s GPS Diagnostics", model_name);
 
 	lbe_enable_vt();
 	printf("\033[2J\033[H");
@@ -345,7 +354,7 @@ static int m1425_diag(struct lbe_transport *t) {
 			if (payload > (size_t)(got - 2)) payload = (size_t)(got - 2);
 			if (ubx_consume(buf, &buf_len, sizeof buf, r + 2, payload,
 			                &pvt, &sv, &clk) > 0) {
-				gnss_draw("LBE-1425 GPS Diagnostics", &pvt, &sv, -1);
+				gnss_draw(title, &pvt, &sv, -1);
 				if (clk.valid) {
 					/* u-blox reports 0xFFFFFFFF when an accuracy is unknown
 					 * (e.g. before a fix) -- show n/a rather than 4294967295. */
@@ -392,13 +401,17 @@ static void clocklog_print_row(const char *row, void *ctx) {
 	fflush(stdout);   /* line-buffered so live pipes/redirects see each row */
 }
 
-static int m1425_clocklog(struct lbe_transport *t, int seconds) {
+int lbe_shared_clocklog(struct lbe_transport *t, int seconds) {
 	lbe_transport_claim(t);
 
 	struct clocklog_state st;
 	clocklog_init(&st);
 
-	printf("# LBE-1425 NAV-CLOCK time series (u-blox self-report; NOT an\n");
+	char model_name[64];
+	const char *mn = "142x";
+	if (lbe_getenv("LBE_MODEL_NAME", model_name, sizeof model_name))
+		mn = model_name;
+	printf("# LBE-%s NAV-CLOCK time series (u-blox self-report; NOT an\n", mn);
 	printf("# independent measurement of the disciplined OUT1/OUT2 output).\n");
 	printf("# iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap\n");
 	fflush(stdout);
@@ -460,7 +473,7 @@ static void m1425_ubx_wrap(struct lbe_transport *t, const uint8_t *w, size_t n) 
 	send_cmd(t, LBE_MINI_UBX_WRAP, w, 1, n);
 }
 
-static int m1425_gps_info(struct lbe_transport *t) {
+int lbe_shared_gps_info(struct lbe_transport *t) {
 	lbe_transport_claim(t);
 	/* MON-VER poll, and enable MON-HW (0A 09) + MON-RF (0A 38) at rate 1 via
 	 * CFG-MSG (06 01, 8-byte payload: msgClass, msgID, rate[6]). */
@@ -553,7 +566,7 @@ const struct lbe_model_ops lbe_ops_1421 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.dual_output        = 1,
 };
 
@@ -573,7 +586,7 @@ const struct lbe_model_ops lbe_ops_1423 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.dual_output        = 1,
 };
 
@@ -593,13 +606,13 @@ const struct lbe_model_ops lbe_ops_1425 = {
 	.set_pll_mode       = m1421_set_pll_mode,
 	.set_1pps           = m1421_set_1pps,
 	.set_power_level    = m1421_set_power_level,
-	.monitor            = m1421_monitor,
+	.monitor            = lbe_shared_monitor,
 	.set_gnss           = m1425_set_gnss,
 	.set_dynmodel       = m1425_set_dynmodel,
 	.set_nmea           = m1425_set_nmea,
-	.diag               = m1425_diag,
-	.clocklog           = m1425_clocklog,
-	.gps_info           = m1425_gps_info,
+	.diag               = lbe_shared_diag,
+	.clocklog           = lbe_shared_clocklog,
+	.gps_info           = lbe_shared_gps_info,
 	.dual_output        = 1,
 	.has_antenna_current = 1,
 };

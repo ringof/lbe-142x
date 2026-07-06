@@ -27,7 +27,13 @@ struct lbe_status {
     int pps_enabled;
     int out1_power_low;
     int out2_power_low;
-    /* LBE-1425: measured antenna bias current in mA (status report byte 23).
+    /* GNSS constellation enable bitmask (1420 byte 10, 1425 byte 21).
+     * 0 on models without GNSS control (1421/1423). */
+    uint8_t gnss_mask;
+    /* u-blox dynamic platform model (1420 byte 11, 1425 byte 22).
+     * 0 on models without dynModel control. */
+    uint8_t dynmodel;
+    /* 1420/1425: measured antenna bias current in mA (1420 byte 12, 1425 byte 23).
      * 0 = no antenna / open; a few..tens mA = a healthy active antenna; an
      * over-current short instead clears the antenna_ok bit. 0 on other models. */
     uint8_t antenna_current_ma;
@@ -86,12 +92,12 @@ int lbe_set_power_level(struct lbe_device* dev, int output, int low_power);
  * unsupported model or invalid value. */
 int lbe_set_drive_ma(struct lbe_device* dev, unsigned ma);
 
-/* LBE-1425 only. Returns -1 on an unsupported model.
+/* LBE-1420/1425. Returns -1 on an unsupported model.
  *  - set_gnss: constellation enable bitmask (LBE_1425_GNSS_* in lbe_common.h);
  *    rejects masks that combine BeiDou with GPS/SBAS/Galileo.
  *  - set_dynmodel: u-blox CFG-NAV5 dynamic platform model (0=Portable,
  *    2=Stationary, 8=Airborne<4g, ...).
- *  - set_nmea: enable/disable the NMEA output stream. */
+ *  - set_nmea: enable/disable the NMEA output stream (1425 only). */
 int lbe_set_gnss(struct lbe_device* dev, uint8_t mask);
 int lbe_set_dynmodel(struct lbe_device* dev, uint8_t model);
 int lbe_set_nmea(struct lbe_device* dev, int enable);
@@ -105,12 +111,12 @@ int lbe_monitor(struct lbe_device* dev);
  * print to stdout. Returns -1 if unsupported on this model. */
 int lbe_gps_info(struct lbe_device* dev);
 
-/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from the
+/* LBE-1420/1425: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from the
  * EP 0x83 stream: position, CNR histogram, clock disciplining). Returns -1 if
  * unsupported; otherwise loops until the process is killed. */
 int lbe_diag(struct lbe_device* dev);
 
-/* LBE-1425 only: stream a CSV time series of NAV-CLOCK timing telemetry
+/* LBE-1420/1425: stream a CSV time series of NAV-CLOCK timing telemetry
  * (iTOW_s,clkB_ns,clkD_nsps,tAcc_ns,fAcc_pss,fixType,numSV,valid,gap) from the
  * EP 0x83 diagnostics stream, line-buffered for live plotting/logging.
  * `seconds` bounds the run (<=0 = until the process is killed). Returns -1 if

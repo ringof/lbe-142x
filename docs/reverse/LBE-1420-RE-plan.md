@@ -472,18 +472,53 @@ Blink (`0x02`) toggles bit 3 (LED1): `0x1F` → `0x17`.
 frequency field, not in a "tail" region. The 1420 has no freq2, no OUT2 power,
 no NMEA enable, and no PPS in the status report.
 
-### Rung 4 — code corrections
-> _(to be filled after evidence review)_
+### Rung 4 — code corrections (CONFIRMED 2026-07-05)
+
+All code changes implemented and validated (clean `-Werror` build, C test suite,
+Python self-test). Evidence document: `LBE-1420-config-v1.08.md`.
+
+**Bugs fixed:**
+- **Critical:** `--pwr1` sent opcode `0x07` (= SET_GNSS), corrupting the
+  constellation config. Now sends `0x0D` (SET_PWR1) — the correct opcode
+  confirmed by vendor capture.
+- **Status decode:** byte 10 was read as "OUT1 power" — it's actually the GNSS
+  mask. Byte 11 (dynModel) and byte 12 (antenna current mA) were ignored.
+- **Output-enable:** hardcoded `outputs_enabled = 1` masked the real state;
+  now reads bit 4 of the status byte (confirmed via Rung 1).
+- **Frequency opcodes:** used 0x03/0x04 with freq at byte 1; now uses 0x06/0x05
+  with freq at byte 5 (1421 wire format, confirmed via Rung 2).
+- **EN_OUT arg:** sent `0x01` for on; vendor sends `0xFF`. Changed for parity.
+
+**New capabilities enabled:**
+- `--gnss` (opcode 0x07): set GNSS constellation bitmask.
+- `--dynmodel` (opcode 0x09): set u-blox dynamic model.
+- `--diag` / `--clocklog` / `--gps-info`: UBX diagnostics via EP 0x83.
+- `--monitor`: CDC NMEA live display (shared with 1421/1425).
+- `--status` now shows GNSS mask, dynamic model, and antenna current (mA).
+- Antenna current enables "Not connected (0 mA)" vs "OK (N mA)" display.
+
+**Architecture:**
+- Shared functions (`lbe_shared_monitor`, `lbe_shared_diag`,
+  `lbe_shared_clocklog`, `lbe_shared_gps_info`) extracted from model_1421.c
+  and declared in lbe_model.h. Titles use `LBE_MODEL_NAME` env var.
+- New struct fields `gnss_mask` and `dynmodel` in `lbe_status` normalize
+  model-specific byte offsets (1420: 10/11, 1425: 21/22).
+- `status_byte_name()` in main.c is now model-aware for `--probe-op`.
+- `cli_view.c` gates NMEA display on `ops->set_nmea` (NULL on 1420).
+- Removed `m1420_set_1pps` stub — set to NULL (lbe_device.c handles it).
 
 ## Open questions
 
 - ~~Does the vendor Windows tool for the 1420 expose any GPS/constellation UI?~~
   **Answered: yes.** The vendor tool sends `0x07` SET_GNSS and `0x09`
   SET_DYNMODEL. Full constellation sweep and dynmodel sweep captured.
-- What GNSS module does the 1420 use? If it's an older u-blox (M6/M7 vs the
-  1425's M8), the protocol capabilities differ. A `--gps-info` equivalent
-  (UBX-MON-VER poll) would answer this directly once implemented.
-- Is there a firmware update mechanism? (The 1425 is ROM-based, no updates.)
+- ~~What GNSS module does the 1420 use?~~ **Answered: u-blox M10** (ROM SPG
+  5.10, PROTVER 34.10 — protocol 33+ = M10). HW field `000A0000`. Likely an
+  M10M or similar small variant. The M10 lifts the M8's 3-concurrent-GNSS
+  limit — BeiDou exclusion may not apply here (see H8).
+- ~~Is there a firmware update mechanism?~~ **Yes.** All Leo Bodnar GPSDOs
+  support firmware updates. (The "ROM" in UBX-MON-VER refers to the u-blox GPS
+  module's mask-ROM firmware, not the LBE MCU.)
 - ~~Is the `0x08` CFG-MSG wrap a one-shot poll or a persistent stream-enable on
   bcdDevice 1.08?~~ **Answered: one-shot.** The 15-second single-session test
   confirmed one burst of PVT+SAT+CLOCK, then idle. Continuous diagnostics
@@ -498,3 +533,88 @@ no NMEA enable, and no PPS in the status report.
   the freq bytes at offset 1–4 happen to be a valid mask), not because the
   firmware treats them as freq commands. **Do not probe `0x03`/`0x04` further
   without a hypothesis about what they might do.**
+
+## Rung 5 — M10-specific capabilities (hypotheses)
+
+The 1420 has a u-blox M10 (PROTVER 34.10), two generations newer than the
+1425's M8 (PROTVER 18.00). The M10 lifts several M8 constraints, and the 0x08
+UBX-wrap opcode potentially exposes features the vendor UI doesn't surface.
+
+### H8: "The M10 lifts the BeiDou exclusion rule"
+
+The M8 has a 3-concurrent-GNSS limit: GPS/SBAS/Galileo are mutually exclusive
+with BeiDou. The M10 removes this limit — all constellations can track
+simultaneously.
+
+- **Falsifier**: Set `--gnss 0x4F` (GPS+SBAS+Galileo+BeiDou+GLONASS). If
+  `--status` reads back `0x4F` AND `--gps-info` shows all five enabled in
+  CFG-GNSS, the exclusion rule doesn't apply on the 1420.
+- **Test**: Set and read back. Non-destructive — worst case, the firmware
+  silently drops BeiDou and the readback shows `0x47`.
+- **Note**: The Rung 2 vendor sweep captured `0x0F` (GPS+SBAS+Galileo+BeiDou)
+  being sent — which would violate the M8 rule but succeed on M10.
+- **Code impact**: If confirmed, the BeiDou-exclusion reject in
+  `lbe_device.c:lbe_set_gnss()` needs a model gate (only enforce on 1425/M8).
+
+### H9: "NavIC/IRNSS is accessible via the GNSS mask"
+
+The M10 supports NavIC (u-blox gnssId 7). Following the `bit = 1 << gnssId`
+pattern, NavIC would be bit 7 = `0x80`.
+
+- **Falsifier**: Set `--gnss 0xC7` (GPS+SBAS+Galileo+GLONASS+NavIC). If
+  `--status` reads back `0xC7` AND `--gps-info` CFG-GNSS shows NavIC enabled,
+  the firmware passes bit 7 through.
+- **Test**: Set and read back. Safe — if bit 7 is ignored, readback is `0x47`.
+- **Note**: NavIC coverage is regional (India + surrounding). Might not acquire
+  any SVs from the test location, but CFG-GNSS readback confirms the config.
+
+### H10: "IMES (bit 4, 0x10) is passable"
+
+IMES (Indoor Messaging System, gnssId 4) is a Japanese indoor positioning
+system. Confirmed working on the 1425 by inference from the `1 << gnssId`
+pattern, but never explicitly tested on either model.
+
+- **Falsifier**: Set `--gnss 0x57` (GPS+SBAS+Galileo+IMES+GLONASS). Readback
+  shows `0x57` and CFG-GNSS lists IMES.
+- **Test**: Safe — if unsupported, bit is dropped.
+
+### H11: "The 0x08 UBX wrap accepts arbitrary UBX commands"
+
+The vendor tool only sends CFG-MSG via 0x08 (to enable NAV-PVT/SAT/CLOCK). But
+the wrap format `{0x08, class, id, len_lo, len_hi, payload...}` suggests it
+forwards any UBX command to the GPS module. If so, the following become
+accessible without firmware changes:
+
+- **CFG-TP5** (timing pulse): configure the 1PPS output parameters (pulse
+  width, polarity, lock/unlock frequencies). The 1420 has no SET_PPS opcode,
+  but if CFG-TP5 reaches the M10, it might be configurable via UBX directly.
+- **CFG-VALSET** (M10 key-value config): the M10's native configuration
+  interface. Could set anything the module supports.
+- **MON-HW3** / **MON-RF** (M10 variants): might give better antenna status
+  than the M8-era MON-HW we currently poll.
+
+- **Falsifier (safe)**: Send a **poll** (zero-length payload) of a known M10
+  message via `--probe-op 0x08 <class> <id> 0x00 0x00` and check EP 0x83 for
+  the response. A safe first test: poll CFG-TP5 (`0x06 0x31 0x00 0x00`) — if
+  the M10 responds, we can read the current timing pulse config without
+  changing it.
+- **Falsifier (observable)**: Send CFG-TP5 to set a known pulse width, then
+  measure the 1PPS output with an oscilloscope.
+- **Note**: The wrap format we use is
+  `{0x08, class, id, len_lo, len_hi, payload...}` at args_offset 1. The
+  firmware presumably adds the B5 62 sync header and UBX checksum before
+  forwarding to the M10.
+
+### H12: "M10 protocol 34 NAV messages are available"
+
+The M10 supports additional NAV messages not present on M8:
+- NAV-SIG (signal-level per-signal, not just per-SV)
+- NAV-TIMELS (leap second info)
+
+These could be enabled via CFG-MSG wrap (same mechanism as PVT/SAT/CLOCK).
+
+- **Falsifier**: Send CFG-MSG enable for NAV-SIG (`0x08 0x06 0x01 0x08 0x00
+  0x01 0x43 0x0A`) and check EP 0x83 for class 0x01 id 0x43 responses.
+- **Test**: Safe — worst case, the M10 NAK's the unknown message.
+- **Value**: NAV-SIG gives per-signal (L1C/A, L1C, etc.) CNR rather than the
+  per-SV aggregate NAV-SAT provides. Better visibility into multipath/jamming.

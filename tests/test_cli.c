@@ -73,7 +73,10 @@ static struct lbe_model_ops fix_1420(void) {
 	struct lbe_model_ops o; memset(&o, 0, sizeof o);
 	o.name = "1420";
 	o.max_freq_out1 = LBE_1420_MAX_FREQ; o.max_freq_out2 = LBE_1420_MAX_FREQ;
-	return o;   /* single output; no monitor/gnss/drive/gps_info */
+	o.set_gnss = d_tu; o.set_dynmodel = d_tu;
+	o.has_antenna_current = 1;
+	o.monitor = d_t; o.diag = d_t; o.clocklog = d_ti; o.gps_info = d_t;
+	return o;
 }
 static struct lbe_model_ops fix_1421(void) {
 	struct lbe_model_ops o; memset(&o, 0, sizeof o);
@@ -135,12 +138,14 @@ void run_cli_tests(void) {
 	want_cap(cap, sizeof cap, (unsigned long)LBE_1421_MAX_FREQ);
 	CHECK(has(b, cap));
 
-	/* 1420: single output; no f2/pps/statlog/gnss/monitor/drive/gps-info */
+	/* 1420: single output; has gnss/dynmodel/diag/clocklog/monitor/gps-info;
+	 * no f2/pps/statlog/drive/nmea */
 	o = fix_1420();
 	cap_usage(b, sizeof b, LBE_1420, &o);
 	CHECK(!has(b, "--f2 ") && !has(b, "--pps") && !has(b, "--statlog")
-	   && !has(b, "--gnss") && !has(b, "--monitor") && !has(b, "--drive")
-	   && !has(b, "--gps-info"));
+	   && !has(b, "--drive") && !has(b, "--nmea"));
+	CHECK(has(b, "--gnss") && has(b, "--dynmodel") && has(b, "--diag")
+	   && has(b, "--clocklog") && has(b, "--monitor") && has(b, "--gps-info"));
 	CHECK(has(b, "--f1t") && has(b, "--pll"));   /* non-Mini shows these */
 	want_cap(cap, sizeof cap, (unsigned long)LBE_1420_MAX_FREQ);
 	CHECK(has(b, cap));
@@ -154,11 +159,11 @@ void run_cli_tests(void) {
 	want_cap(cap, sizeof cap, (unsigned long)LBE_MINI_MAX_FREQ);
 	CHECK(has(b, cap));
 
-	/* status, 1425: antenna mA + OUT2 + 1PPS + GNSS echo + Mode */
+	/* status, 1425: antenna mA + OUT2 + 1PPS + GNSS echo + Mode + NMEA */
 	o = fix_1425();
 	memset(&s, 0, sizeof s);
 	s.antenna_ok = 1; s.antenna_current_ma = 5; s.outputs_enabled = 1;
-	s.raw[21] = LBE_1425_GNSS_GPS; s.raw[22] = 2 /*Stationary*/; s.raw[24] = 1;
+	s.gnss_mask = LBE_1425_GNSS_GPS; s.dynmodel = 2 /*Stationary*/; s.raw[24] = 1;
 	cap_status(b, sizeof b, LBE_1421_DUALOUT, &o, &s);
 	CHECK(has(b, "Antenna: OK (5 mA)"));
 	CHECK(has(b, "OUT2 Frequency") && has(b, "1PPS on OUT1") && has(b, "Mode:"));
@@ -181,6 +186,18 @@ void run_cli_tests(void) {
 	cap_status(b, sizeof b, LBE_MINI, &o, &s);
 	CHECK(has(b, "OUT1 Drive Strength: 24mA") && has(b, "Signal loss count: 3"));
 	CHECK(!has(b, "Antenna:") && !has(b, "OUT2") && !has(b, "Mode:"));
+
+	/* status, 1420: antenna mA + GNSS/dynModel, no OUT2/1PPS/NMEA */
+	o = fix_1420();
+	memset(&s, 0, sizeof s);
+	s.antenna_ok = 1; s.antenna_current_ma = 4; s.outputs_enabled = 1;
+	s.gnss_mask = 0x47; s.dynmodel = 2;
+	cap_status(b, sizeof b, LBE_1420, &o, &s);
+	CHECK(has(b, "Antenna: OK (4 mA)"));
+	CHECK(has(b, "GNSS: 0x47 (GPS SBAS Galileo GLONASS)"));
+	CHECK(has(b, "Dynamic model: Stationary (2)"));
+	CHECK(!has(b, "OUT2 Frequency") && !has(b, "1PPS on OUT1"));
+	CHECK(!has(b, "NMEA output"));
 
 	/* status: antenna short-circuit branch (non-Mini, !antenna_ok) */
 	o = fix_1421();

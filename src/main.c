@@ -15,13 +15,26 @@
 #define MODEL_GENERIC (-1)
 
 /* Friendly name for the status-report bytes the decoder understands, used by
- * --probe-op to annotate which field an opcode touched. NULL if unknown. */
-static const char *status_byte_name(int off) {
+ * --probe-op to annotate which field an opcode touched. NULL if unknown.
+ * The 1420 places GNSS/dynModel/antenna at bytes 10-12; the 1421/1425 at 21-23. */
+static const char *status_byte_name(int off, enum lbe_model mdl) {
 	switch (off) {
 	case 1:  return "status bits";
-	case 6: case 7: case 8: case 9:     return "OUT1 frequency";
-	case 14: case 15: case 16: case 17: return "OUT2 frequency";
+	case 6: case 7: case 8: case 9: return "OUT1 frequency";
 	case 18: return "PLL/FLL mode";
+	default: break;
+	}
+	if (mdl == LBE_1420) {
+		switch (off) {
+		case 10: return "GNSS mask";
+		case 11: return "dynModel";
+		case 12: return "antenna mA";
+		default: return NULL;
+		}
+	}
+	/* 1421/1423/1425 layout */
+	switch (off) {
+	case 14: case 15: case 16: case 17: return "OUT2 frequency";
 	case 19: return "OUT1 power";
 	case 20: return "OUT2 power";
 	case 21: return "GNSS mask";
@@ -85,6 +98,7 @@ int main(int argc, char *argv[]) {
 	 * identity (1421/1423/1425 each have their own ops entry). */
 	const char *model_name = lbe_device_ops(dev)->name;
 	fprintf(stderr, "Connected to LBE-%s\n", model_name);
+	lbe_setenv("LBE_MODEL_NAME", model_name);
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--f1") == 0 || strcmp(argv[i], "--f2") == 0 || 
@@ -305,7 +319,7 @@ int main(int argc, char *argv[]) {
 			int any = 0;
 			for (int b = 0; b < 60; b++) {
 				if (before.raw[b] == after.raw[b]) continue;
-				const char *nm = status_byte_name(b);
+				const char *nm = status_byte_name(b, model);
 				if (nm)
 					printf("  byte %2d: 0x%02X -> 0x%02X  (%s)\n",
 					       b, before.raw[b], after.raw[b], nm);
@@ -317,9 +331,6 @@ int main(int argc, char *argv[]) {
 			if (!any) printf("  no status change\n");
 			changed = 1;
 		} else if (strcmp(argv[i], "--monitor") == 0) {
-			/* Let the shared monitor impl render the real model in its
-			 * title (1421/1423/1425 share one monitor function). */
-			lbe_setenv("LBE_MODEL_NAME", model_name);
 			lbe_monitor(dev);
 			changed = 1;
 		} else if (strcmp(argv[i], "--gps-info") == 0) {

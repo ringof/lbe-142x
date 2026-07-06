@@ -45,17 +45,17 @@ struct lbe_model_ops {
 	 * only; NULL elsewhere. Prints to stdout, returns 0 on success. */
 	int (*gps_info)(struct lbe_transport *t);
 
-	/* LBE-1425 only (NULL elsewhere). GNSS constellation enable bitmask,
-	 * u-blox dynamic platform model, and NMEA-output enable. */
+	/* 1420/1425 (NULL elsewhere). GNSS constellation enable bitmask,
+	 * u-blox dynamic platform model, and NMEA-output enable (1425 only). */
 	int (*set_gnss)(struct lbe_transport *t, uint8_t mask);
 	int (*set_dynmodel)(struct lbe_transport *t, uint8_t model);
 	int (*set_nmea)(struct lbe_transport *t, int enable);
 
-	/* LBE-1425 only: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from
+	/* 1420/1425: live UBX diagnostics monitor (NAV-PVT/SAT/CLOCK from
 	 * the EP 0x83 stream). NULL elsewhere. Loops until killed. */
 	int (*diag)(struct lbe_transport *t);
 
-	/* LBE-1425 only: CSV time-series log of NAV-CLOCK timing telemetry from
+	/* 1420/1425: CSV time-series log of NAV-CLOCK timing telemetry from
 	 * the EP 0x83 stream (one row per ~1 Hz solution). `seconds` bounds the
 	 * run; <=0 means until killed. NULL elsewhere. */
 	int (*clocklog)(struct lbe_transport *t, int seconds);
@@ -74,6 +74,14 @@ struct lbe_model_ops {
 	 * can't. Set on the 1425; 0 elsewhere. */
 	int has_antenna_current;
 };
+
+/* Shared ops used by both the 1420 and 1425 vtables (defined in model_1421.c).
+ * The monitor function reads NMEA from the CDC port; diag/clocklog/gps_info
+ * use the EP 0x83 UBX stream. */
+int lbe_shared_monitor(struct lbe_transport *t);
+int lbe_shared_diag(struct lbe_transport *t);
+int lbe_shared_clocklog(struct lbe_transport *t, int seconds);
+int lbe_shared_gps_info(struct lbe_transport *t);
 
 extern const struct lbe_model_ops lbe_ops_1420;
 extern const struct lbe_model_ops lbe_ops_1421;
